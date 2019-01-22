@@ -154,14 +154,28 @@ class ImageProcessor(Normalizer,Cropper):
     def standardize_img(self,inputFile):
         #first convert image to numpy array
         if type(inputFile)==nib.nifti1.Nifti1Image:#input file is nii
+            print("NII chosen")
             imgStandard = standardize_nii(inputFile)
         elif type(inputFile)==pydicom.dataset.FileDataset:#input file is dcm
-            imgStandard = standardize_slice(inputFile)
+            imgStandard = standardize_dicom(inputFile)
         elif type(inputFile)==np.ndarray:#input must be already standardized
             imgStandard = inputFile
         else:
             sys.exit(type(self).__name__+".pre_process_img can't standardize inpuy file")
         return imgStandard
+
+    def standardize_label(self,inputFile):
+        #first convert image to numpy array
+        if type(inputFile)==nib.nifti1.Nifti1Image:#input file is nii
+            print("Nii Label chosen")
+            labelStandard = standardize_nii_label(inputFile)
+        elif type(inputFile)==pydicom.dataset.FileDataset:#input file is dcm
+            labelStandard = standardize_dicom_label(inputFile)
+        elif type(inputFile)==np.ndarray:#input must be already standardized
+            labelStandard = inputFile
+        else:
+            sys.exit(type(self).__name__+".pre_process_img can't standardize inpuy file")
+        return labelStandard
 
     def pre_process(self,inputFile):
         #preprocessing 
@@ -234,63 +248,6 @@ def body_bounding_box(img):
     return (ymin,ymax),(xmin,xmax)
 
 
-def crop_body_roi(imgInput,labelInput):
-    '''
-    Wrapper function to crop batches of image and label pair. If label is not provided image is cropped, otherwise both are cropped. 
-    Input: ndarray; img or img/label pair
-    Output: ndarray; img or img/label pair
-    '''
-
-    #remove axis
-    img = imgInput.squeeze();
-
-    if labelInput is not None:
-        #first remove body mask from labels, for nii images there was not body contours
-        #remove_body_mask(labelInput);
-        #convert to one-hot encoded
-        label = to_categorical(labelInput,num_classes=NUMCLASSES).reshape((-1,W0,H0,NUMCLASSES));   
-
-    #first check dimensions of image
-    if len(img.shape)==2:
-        rows, cols = body_bounding_box(imgInput);
-        #crop and resize image
-        imgCrop = imgInput[rows[0]:rows[1],cols[0]:cols[1]];
-        imgZoom = cv2.resize(imgCrop,(H,W));
-
-        if labelInput is not None:
-            #crop and resize label
-            labelCrop = label[rows[0]:rows[1],cols[0]:cols[1],:];        
-            labelZoom = resize(labelCrop,(W,H,NUMCLASSES));
-            return imgZoom, labelZoom
-        else:
-            return imgZoom
-
-    elif len(img.shape)==3:
-        N = img.shape[0];
-        cropImg = np.zeros((N,W,H));
-        cropLabel = np.zeros((N,W,H,NUMCLASSES));
-
-        for idx in range(N):
-            rows, cols = body_bounding_box(imgInput[idx]);
-            #crop and resize image
-            imgCrop = imgInput[idx,rows[0]:rows[1],cols[0]:cols[1]];
-            imgZoom = cv2.resize(imgCrop,(H,W));
-            cropImg[idx] = imgZoom;
-        
-            if labelInput is not None:
-                #crop and resize label
-                labelCrop = label[idx,rows[0]:rows[1],cols[0]:cols[1],:];        
-                labelZoom = resize(labelCrop,(W,H,NUMCLASSES));
-                cropLabel[idx] = labelZoom;
-
-        if labelInput is not None:
-            return cropImg, cropLabel
-        else:
-            return cropImg
-    else:
-        sys.exit("preprocessing.crop_body_roi can't crop img size"+str(img.shape)+"; Input must be (H,W) or (N,H,W)")
-
-
 def crop_image_roi(img,rowMin=ROW,rowMax=ROW+W,colMin=COL,colMax=COL+H):
     '''
     Method to crop center of image using pre-defined regions. Not using it anymore
@@ -347,7 +304,7 @@ def standardize_nii_label(label):
 
     return labelRot
 
-def standardize_slice(imgSlice,minHU=-1000, maxHU=3000):
+def standardize_dicom(imgSlice,minHU=-1000, maxHU=3000):
     '''
     Converts pixel values to CT values, then shifts everything by 1000 to make air zero
     Input: pydicom object
@@ -362,102 +319,21 @@ def standardize_slice(imgSlice,minHU=-1000, maxHU=3000):
     #2 clip HU between [-1000, 3000]
     sliceHU = (sliceHU.clip(minHU,maxHU)+1000).astype('uint16')
     
-    return sliceHU
+    return sliceHU.astype('float32')
 
-def remove_body_mask(labelMask):
+def standardize_dicom_label(labelMask,removeBody=False, organToSegment=False):
     '''
-    Modifies labels in place (be-carefull using this method).
-    Body labels are marked as one, this method that to zero and decrements other labels by one    
-    Input: ndarray
-    Outpur: ndarray, modifiesarray in place
+    Method to standardize labels; such as removing body label or binarizing labels
     '''
-    #1. find non zero mask
-    nonAir = ~(labelMask==0);    
-    #2. subtract one from index, 
-    labelMask[nonAir] = labelMask[nonAir]-1;  
-
-def img_to_tensor(array):
-    '''
-    Method to convert numpy array to 4D tensor to process in tensorflow
-    Input: ndarray, must be at least 2D image
-    Output: 4D ndarray
-    '''
-    #1. get array shape
-    shape = array.shape;
-
-    if len(shape)==2:
-        return array[np.newaxis,...,np.newaxis];
-    elif len(shape)==3:
-        #num channel exist, batch size missing
-        if (np.prod(shape[1:])==H0*W0) or (np.prod(shape[1:])==H*W):
-            return array[...,np.newaxis]
-        #num batches exist but, channel missing
-        elif (np.prod(shape[:-1])==H0*W0) or (np.prod(shape[:-1])==H*W):        
-            return array[np.newaxis,...]
-        else:
-            sys.exit("preprocessing.img_to_tensor method can't convert ",shape," to 4D tensor");
-    elif len(shape)==4:#already 4D tensor
-        return array
-    else:
-        sys.exit("preprocessing.img_to_tensor method can't convert ",shape," to 4D tensor");
-
-
-def pre_process_img_label(imgInput,labelInput=None,normalize=None):
-    '''
-    Wrapper method to pre-process and crop batches of img/label pairs.
-    Input: ndarray img or img/label pair
-    Output: ndarray img or img/label pair
-    '''
-
-    #crop label and image
-    if labelInput is not None:
-        cropImg, cropLabel = crop_body_roi(imgInput,labelInput);
-    else:
-        cropImg = crop_body_roi(imgInput,labelInput);
-
-    #apply normalization to image
-    if normalize is not None:
-        nonZero = np.ma.masked_equal(cropImg,0);
-        normalized = ((nonZero-normalize["means"])/normalize["vars"]).data;
-    else:
-        normalized = cropImg;    
-
-    if labelInput is not None:
-        #return processed image label pair
-        return normalized.astype("float32"), cropLabel.astype("float32");
-    else:
-        return normalized.astype("float32")
-
-def pre_process_img(imgInput,normalize,removeAir=True):
-    """
-    Normalizes image in ROI
-    """
-    if removeAir:
-        nonZero = np.ma.masked_equal(imgInput,0);
-        normalized = ((nonZero-normalize["means"])/normalize["vars"]).data;
-    else:
-        normalized = (imgInput-normalize["means"])/normalize["vars"];
-
-    #crop image
-    normalized = crop_image_roi(normalized);
-
-    return normalized.astype("float32");
-
-def pre_process_label(label,organToSegment=None):
-    """
-    Preprocesses label by removing body
-    """
-    #crop image for roi
-    label = crop_image_roi(label);
-
-    #remove body mask
-    remove_body_mask(label)
-
-    #Add preprocessing for labels, applies on training stage
     if organToSegment:
-        label[label!=organToSegment] = 0;
-        label[label==organToSegment] = 1;
+        labelMask[labelMask!=organToSegment] = 0;
+        labelMask[labelMask==organToSegment] = 1;
 
-    return label.astype("float32");
+    if removeBody:
+        #1. find non zero mask
+        nonAir = ~(labelMask==0);    
+        #2. subtract one from index, 
+        labelMask[nonAir] = labelMask[nonAir]-1; 
     
+    return labelMask.astype("float32");
 

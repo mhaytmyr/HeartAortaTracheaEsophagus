@@ -114,7 +114,6 @@ def create_contour_mask(contours,slices):
             organSlices[zIndex] = True;
 
     return imgData[organSlices,...],imgLabel[organSlices,...]
-    #return imgData,imgLabel,imgBody
 
 
 def save_image_mask(features, labels, fileName):
@@ -182,6 +181,9 @@ def compile_dataset(trainDataPath = "../TrainData/",fileName = "TRAIN.h5"):
     # extract subsample
     #trainPatients = [patient for patient in trainPatients if 'HEADNECK' in patient];
 
+    #initialize processor class
+    processor = ImageProcessor()
+
     for patient in trainPatients:
         print(patient)
         for subdir, dirs, files in os.walk(patient):
@@ -191,14 +193,19 @@ def compile_dataset(trainDataPath = "../TrainData/",fileName = "TRAIN.h5"):
             print(label.shape,slices.shape)
 
         #pre-process images and labels
-        slices = standardize_nii(slices);
-        label = standardize_label(label);
+        #slices = standardize_nii(slices);
+        #label = standardize_label(label);
 
         #get correct dimensions 
-        label = np.transpose(label,[2,0,1]);        
-        slices = np.transpose(slices,[2,0,1]);
+        #label = np.transpose(label,[2,0,1]);        
+        #slices = np.transpose(slices,[2,0,1]);
 
-        save_image_mask(slices, label, fileName)
+        slices = processor.standardize_img(slices)
+        print(slices.shape)
+        labels = processor.standardize_label(label)
+        print(labels.shape)
+
+        save_image_mask(slices, labels, fileName)
         
 def get_class_weights(trainFileName):
     '''
@@ -278,12 +285,12 @@ if __name__=="__main__":
     #trainDataPath = "../../SegmentationDataSets/SegTHOR/test/";
     #fileName = "TEST.h5";
     
-    #trainDataPath = "../../SegmentationDataSets/SegTHOR/train/";
+    trainDataPath = "../../SegmentationDataSets/SegTHOR/train/";
     fileName = "TRAIN.h5";
 
-    #compile_dataset(trainDataPath,fileName)
+    compile_dataset(trainDataPath,fileName)
     #test_random_images(fileName)
-    save_train_stats(fileName)
+    #save_train_stats(fileName)
     #save_label_idx_map(fileName)
     #get_class_weights(fileName)
 
