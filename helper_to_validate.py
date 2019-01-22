@@ -136,6 +136,8 @@ class SubmitPrediction:
 
         #apply preprocessing
         imgStandard = processor.standardize_img(slices)
+        imgDeStandard = processor.de_standardize_nii(imgStandard)
+        print(imgDeStandard.shape)
         imgCrop = processor.crop(imgStandard)
         imgZoom = processor.zoom(imgCrop)
         imgNorm = processor.normalize(imgZoom)
@@ -156,11 +158,13 @@ class SubmitPrediction:
             imgZoomUnZoom = [imgCrop[idx],imgUnZoom[idx]]
             #print(abs(imgCrop[idx]-imgUnZoom[idx]).max())
             imgCropUnCrop = [imgStandard[idx],imgDeCrop[idx],imgStandard[idx]-imgDeCrop[idx]]
+            imgStandUnStand = [imgStandard[idx],imgDeStandard[...,idx]]
 
             print(idx,idx+batchSize,imgBatch.shape)
             #k = plotter.plot(imgBatch)
             #k = plotter.plot_slices(imgCropUnCrop)
-            k = plotter.plot_slices(imgZoomUnZoom)
+            #k = plotter.plot_slices(imgZoomUnZoom)
+            k = plotter.plot_slices(imgStandUnStand)
             if (k==27) or (k=='n'):
                 return k
         return k
