@@ -192,19 +192,8 @@ def compile_dataset(trainDataPath = "../TrainData/",fileName = "TRAIN.h5"):
             slices = nib.load(glob.glob(os.path.join(subdir,"Patient*.gz"))[0]);
             print(label.shape,slices.shape)
 
-        #pre-process images and labels
-        #slices = standardize_nii(slices);
-        #label = standardize_label(label);
-
-        #get correct dimensions 
-        #label = np.transpose(label,[2,0,1]);        
-        #slices = np.transpose(slices,[2,0,1]);
-
         slices = processor.standardize_img(slices)
-        print(slices.shape)
         labels = processor.standardize_label(label)
-        print(labels.shape)
-
         save_image_mask(slices, labels, fileName)
         
 def get_class_weights(trainFileName):
