@@ -204,7 +204,7 @@ class Cropper:
         input: 2d array
         returns: ndarray
         '''
-        deZoomImg = cv2.resize(imgInput,(col[1]-col[0],row[1]-row[0]),interpolation=cv2.INTER_LANCZOS4)
+        deZoomImg = cv2.resize(imgInput.astype('float32'),(col[1]-col[0],row[1]-row[0]),interpolation=cv2.INTER_LANCZOS4)
         return deZoomImg
 
     def unzoom(self,zoomImg):
@@ -273,6 +273,32 @@ class ImageProcessor(Normalizer,Cropper):
             sys.exit(type(self).__name__+".pre_process_img can't standardize inpuy file")
         return labelStandard
 
+    def img_to_tensor(self,array):
+        '''
+        Method to convert numpy array to 4D tensor to process in tensorflow
+        Input: ndarray, must be at least 2D image
+        Output: 4D ndarray
+        '''
+        #1. get array shape
+        shape = array.shape
+
+        if len(shape)==2:
+            return array[np.newaxis,...,np.newaxis];
+        elif len(shape)==3:
+            #num channel exist, batch size missing
+            if (np.prod(shape[1:])==H0*W0) or (np.prod(shape[1:])==H*W):
+                return array[...,np.newaxis]
+            #num batches exist but, channel missing
+            elif (np.prod(shape[:-1])==H0*W0) or (np.prod(shape[:-1])==H*W):        
+                return array[np.newaxis,...]
+            else:
+                sys.exit("preprocessing.img_to_tensor method can't convert ",shape," to 4D tensor");
+        elif len(shape)==4:#already 4D tensor
+            return array
+        else:
+            sys.exit("preprocessing.img_to_tensor method can't convert ",shape," to 4D tensor");
+
+
     def pre_process(self,inputFile):
         #preprocessing 
         imgStandard = self.standardize_img(inputFile)
@@ -288,7 +314,7 @@ class ImageProcessor(Normalizer,Cropper):
         imgUnZoom = self.unzoom(imgDeNorm)
         imgDeCrop = self.uncrop(imgUnZoom)
 
-        return imgDeNorm
+        return imgDeCrop
 
 def body_bounding_box(img):
     '''
