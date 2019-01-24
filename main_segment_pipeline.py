@@ -311,7 +311,7 @@ if __name__=='__main__':
         predictor = SubmitPrediction(pathToImages='../../SegmentationDataSets/SegTHOR/',filePattern='Patient')
         predictor.set_model(model)
         predictor.set_normalization(normParam={"means":imgMean,"vars":imgStd})
-        predictor.predict_nii_patients(batchSize=2)      
+        predictor.predict_nii_patients(batchSize=8)      
 
     elif arg=='plot':
         plot_generator(valGen, normalize={"means":imgMean,"vars":imgStd})
