@@ -55,9 +55,9 @@ class Plotter:
         #Method to convert 4D label array to 2D image'
         labelInput = labelInput.squeeze()
         #apply argmax to last index, since prediction is one-hot encoded
-        print(np.unique(labelInput))
         if len(labelInput.shape)==4:
             labelInput = labelInput.argmax(axis=-1) 
+        print(np.unique(labelInput))
         return self.tensor_to_image_wrapper(labelInput,idx)
 
     def plot_slice(self,imgInput):
@@ -165,9 +165,8 @@ class SubmitPrediction:
             #imgCropUnCrop = [imgStandard[idx],imgDeCrop[idx],imgStandard[idx]-imgDeCrop[idx]]
             #imgStandUnStand = [imgStandard[idx],imgDeStandard[...,idx]]
             labelPred = self.model.predict(processor.img_to_tensor(imgBatch))
-            labelPredUnZoom = processor.unzoom(labelPred.argmax(axis=-1))
-            labelPredDeCrop = processor.uncrop(labelPredUnZoom)
-            
+            labelPredUnZoom = processor.unzoom_label(labelPred)
+            labelPredDeCrop = processor.uncrop_label(labelPredUnZoom)
             print(idx,idx+batchSize,imgBatch.shape)
             #k = plotter.plot_slice_label(imgDeNorm[idx:idx+batchSize],labelPred)
             k = plotter.plot_slice_label(imgDeCrop[idx:idx+batchSize],labelPredDeCrop)
