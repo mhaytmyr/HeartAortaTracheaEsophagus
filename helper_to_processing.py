@@ -220,6 +220,40 @@ class Cropper:
             unZoomImg.append(tmp)
         return unZoomImg 
 
+    def unzoom_label(self,zoomLabel):
+        '''
+        Method to unzoom labels. Input is 4D array, so I need to zoom each label 
+        separately. Then combine them. Can we optimize thi method???
+        '''
+        unZoomLabel = []
+        for idx in range(zoomLabel.shape[0]):
+            col = self.cols[idx]
+            row = self.rows[idx]
+            currLabel = np.zeros((row[1]-row[0],col[1]-col[0],zoomLabel.shape[-1]))
+            for label in range(zoomLabel.shape[-1]):
+                tmp = self.unzoom_image(row,col,zoomLabel[idx,...,label])
+                currLabel[...,label] = tmp
+            unZoomLabel.append(currLabel)
+        return unZoomLabel
+
+    def uncrop_label(self,cropLabel):
+        '''
+        Method to padd labels. Input is 4D array, so I need to pad each label 
+        separately. Then combine them. Can we optimize thi method???
+        Input: list()
+        Output: 4D array
+        '''
+        unCropLabel = np.zeros((len(cropLabel),H0,W0,NUMCLASSES))
+        for idx in range(len(cropLabel)):
+            col = self.cols[idx]
+            row = self.rows[idx]
+            currLabel = np.zeros((H0,W0,NUMCLASSES))
+            for label in range(NUMCLASSES):
+                tmp = self.uncrop_image(row,col,cropLabel[idx][...,label])
+                currLabel[...,label] = tmp
+            unCropLabel[idx] = currLabel
+        return unCropLabel
+
     def zoom(self,imgInput,height=W,width=H):
         '''
         Method to crop and zoom image
