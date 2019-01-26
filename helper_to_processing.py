@@ -12,7 +12,9 @@ from config import *
 
 class Normalizer:
     def __init__(self,normalize=None):
-        self.normalization = normalize;
+        self.normalization = normalize
+        self.images = None #original input images
+        self.labels = None #original input labels
 
     def normalize(self,inputImg):
         '''
@@ -46,12 +48,13 @@ class Normalizer:
         #2. standardiza dimension from [H,W,N] to [N,H,W] 
         img = np.transpose(img,[2,0,1])
 
-        #print("CT before clipping ...",img.max(), img.min())
-        #2. nii already converted to HU's
+        #3. nii already converted to HU's
         imgClip = (img.clip(minHU,maxHU)+1000).astype('uint16')
-        #print("CT after clipping ...",sliceHU.max(), sliceHU.min())
 
-        #3. images are rotated vertically correct them here
+        #4. save original image
+        self.images = imgClip
+
+        #5. images are rotated vertically correct them here
         imgRot = np.rot90(imgClip,k=3,axes=(1,2)); 
 
         return imgRot
@@ -60,13 +63,13 @@ class Normalizer:
         '''
         Method to convert nii images back to original format
         inputs: ndarray
-        output: ndarray (TODO: conevrt to nii object for submission)
+        output: ndarray 
         '''
         #1. rotate back image as above
         imgRot = np.rot90(imgInput,k=-3,axes=(1,2))    
         #2. convert [N,H,W] -> [H,W,N]
-        imgRot = np.transpose(imgRot,[1,2,0])
-
+        #imgRot = np.transpose(imgRot,[1,2,0])
+        
         return imgRot
     
     def standardize_nii_label(self,label):
@@ -78,10 +81,13 @@ class Normalizer:
         #1. convert nii to ndarray
         label = label.get_data()
 
-        #3. standardiza dimension from [H,W,N] to [N,H,W] 
+        #2. standardiza dimension from [H,W,N] to [N,H,W] 
         label = np.transpose(label,[2,0,1])
 
-        #2. roate label counter-clockwise
+        #3. save original labels
+        self.labels = label
+
+        #4. roate label counter-clockwise
         labelRot = np.rot90(label,k=3,axes=(1,2)) 
 
         return labelRot
@@ -95,13 +101,16 @@ class Normalizer:
         #1. convert pixel data to HU
         slope = imgSlice.RescaleSlope
         intercept = imgSlice.RescaleIntercept
-        sliceHU = imgSlice.pixel_array*slope+intercept
+        imgClip = imgSlice.pixel_array*slope+intercept
 
         #print("Before clipping ",sliceHU.max(), sliceHU.min(), sliceHU.dtype);
         #2 clip HU between [-1000, 3000]
-        sliceHU = (sliceHU.clip(minHU,maxHU)+1000).astype('uint16')
-    
-        return sliceHU.astype('float32')
+        imgClip = (imgClip.clip(minHU,maxHU)+1000).astype('float32')
+
+        #3. save original image
+        self.images = imgClip
+
+        return imgClip
 
     def standardize_dicom_label(self,labelMask,removeBody=False, organToSegment=False):
         '''
@@ -117,7 +126,10 @@ class Normalizer:
             #2. subtract one from index, 
             labelMask[nonAir] = labelMask[nonAir]-1; 
     
-        return labelMask.astype("float32");
+        #3. save original labels
+        self.labels = labelMask
+
+        return labelMask.astype("float32")
 
 
 class Cropper:
@@ -284,7 +296,6 @@ class ImageProcessor(Normalizer,Cropper):
     def standardize_img(self,inputFile):
         #first convert image to numpy array
         if type(inputFile)==nib.nifti1.Nifti1Image:#input file is nii
-            print("NII chosen")
             imgStandard = self.standardize_nii(inputFile)
         elif type(inputFile)==pydicom.dataset.FileDataset:#input file is dcm
             imgStandard = self.standardize_dicom(inputFile)
@@ -297,7 +308,6 @@ class ImageProcessor(Normalizer,Cropper):
     def standardize_label(self,inputFile):
         #first convert image to numpy array
         if type(inputFile)==nib.nifti1.Nifti1Image:#input file is nii
-            print("Nii Label chosen")
             labelStandard = self.standardize_nii_label(inputFile)
         elif type(inputFile)==pydicom.dataset.FileDataset:#input file is dcm
             labelStandard = self.standardize_dicom_label(inputFile)
@@ -317,7 +327,7 @@ class ImageProcessor(Normalizer,Cropper):
         shape = array.shape
 
         if len(shape)==2:
-            return array[np.newaxis,...,np.newaxis];
+            return array[np.newaxis,...,np.newaxis]
         elif len(shape)==3:
             #num channel exist, batch size missing
             if (np.prod(shape[1:])==H0*W0) or (np.prod(shape[1:])==H*W):
