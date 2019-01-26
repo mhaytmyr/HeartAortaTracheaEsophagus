@@ -1,4 +1,4 @@
-import os,sys
+import os,sys,time
 import numpy as np
 import cv2
 import nibabel as nib
@@ -89,7 +89,7 @@ class Plotter:
     
 class SubmitPrediction:
     def __init__(self,pathToImages,filePattern='Patient'):
-        self.images = self.get_list_of_images(pathToImages,filePattern)
+        self.imageList = self.get_list_of_images(pathToImages,filePattern)
         self.model = None
         self.normParam = None
 
@@ -127,19 +127,16 @@ class SubmitPrediction:
         plotter = Plotter()
 
         #get batch of images
-        for item in self.images:
-            
+        for item in self.imageList:
             print("Predicting...",item)
-
             #load patient image
             slices = nib.load(item);   
-                   
             #predict image patch
-            #k = self.predict_image_slices(slices,batchSize,processor,plotter)
-            k = self.processor_tester(slices,batchSize,processor,plotter)
+            k = self.predict_image_slices(slices,batchSize,processor,plotter,item)
+            #k = self.processor_tester(slices,batchSize,processor,plotter)
             if (k==27):
                 break
-        pass            
+
 
     def processor_tester(self,slices,batchSize=6,processor=None,plotter=None):
         #apply preprocessing
@@ -164,36 +161,70 @@ class SubmitPrediction:
             #print(abs(imgCrop[idx]-imgUnZoom[idx]).max())
             #imgCropUnCrop = [imgStandard[idx],imgDeCrop[idx],imgStandard[idx]-imgDeCrop[idx]]
             #imgStandUnStand = [imgStandard[idx],imgDeStandard[...,idx]]
-            labelPred = self.model.predict(processor.img_to_tensor(imgBatch))
-            labelPredUnZoom = processor.unzoom_label(labelPred)
-            labelPredDeCrop = processor.uncrop_label(labelPredUnZoom)
+            
+            #labelPred = self.model.predict(processor.img_to_tensor(imgBatch))
+            #labelPredUnZoom = processor.unzoom_label(labelPred)
+            #labelPredDeCrop = processor.uncrop_label(labelPredUnZoom)
+            #labelPredDeStandard = processor.de_standardize_nii(labelPredDeCrop.argmax(axis=-1))
             print(idx,idx+batchSize,imgBatch.shape)
+            
             #k = plotter.plot_slice_label(imgDeNorm[idx:idx+batchSize],labelPred)
-            k = plotter.plot_slice_label(imgDeCrop[idx:idx+batchSize],labelPredDeCrop)
             #k = plotter.plot_slices(imgCropUnCrop)
-            #k = plotter.plot_slices(imgZoomUnZoom)
-            #k = plotter.plot_slices(imgPred)
+            k = plotter.plot_slices([imgDeStandard[idx],processor.images[idx]])
             if (k==27) or (k=='n'):
                 return k
         return k
 
+    def save_prediction_as_nii(self,predInput,inputFile):
+        '''
+        Method to save prediction as nii file
+        input: 3D array in the format (N,H,W)
+        output: None
+        '''
+        #1. for submission I need to transpose axis
+        labelTrans = np.transpose(predInput,[1,2,0]).astype('uint8')
+        #2. create destination file name and affine
+        affine = nib.load(inputFile).get_affine() 
+        patName = inputFile.split('/')[-1].replace('.gz','')
+        dstFile = './result/'+patName
+        print(labelTrans.shape, dstFile)
+        #3. save image as nifti
+        niiObj = nib.Nifti1Image(labelTrans,affine=np.eye(4))
+        print(niiObj.shape)
+        nib.save(niiObj,dstFile)
+
+
     #method to extract slices from image batches and predict
-    def predict_image_slices(self,slices,batchSize=16,processor=None,plotter=None):
+    def predict_image_slices(self,slices,batchSize=16,processor=None,plotter=None,patient=None):
         
         #initialize pre-processor class
         if processor is None:
             sys.exit(type(self).__name__+".predict_image_slices() needs ImageProcessor class")
 
-        #first call standardize method which converts nii or dcm to numpy
-        imgStandard = processor.standardize_img(slices)
+        t0 = time.time()
+        #1. pre-process image by cropping, zooming and normalization
+        imgNorm = processor.pre_process(slices)
+        print("Pre-processing of {0} took {1:.4f} s".format(slices.shape,time.time()-t0))
+        #2. predict on current batch
+        t0 = time.time()
+        labelPred = self.model.predict(processor.img_to_tensor(imgNorm))
+        print("Inference of {0} took {1:.4f} s".format(imgNorm.shape,time.time()-t0))
+        #3. prediction has (256,384) -> convert back to original crop size
+        t0 = time.time()
+        labelPredUnZoom = processor.unzoom_label(labelPred)
+        print("Unzooming took {0:.4f} s".format(time.time()-t0))
+        #4. pad uncropped label to have (512,512) size
+        t0 = time.time()
+        labelPredDeCrop = processor.uncrop_label(labelPredUnZoom)
+        print("Padding took {0:.4f} s".format(time.time()-t0))
+        #5. this particular dataset was rotated -90 degree, so need to fix it
+        t0 = time.time()
+        labelPredDeStandard = processor.de_standardize_nii(labelPredDeCrop.argmax(axis=-1))
+        print("Unzooming took {0:.4f} s".format(time.time()-t0))
 
-        n = imgStandard.shape[0]
-        for idx in range(0,n,batchSize):
-            #process image batch
-            imgBatch = processor.pre_process(imgStandard[idx:idx+batchSize])
-            print("Predicting...",idx,idx+batchSize,imgBatch.shape)
-            #predict image
-            imgPred = self.model.predict(processor.img_to_tensor(imgBatch))
-            
+        #saving prediction
+        self.save_prediction_as_nii(labelPredDeStandard,patient)
+        return 0
+
         
                 
