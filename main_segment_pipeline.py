@@ -308,7 +308,11 @@ if __name__=='__main__':
         model = load_json_model(modelName)
 
         from helper_to_validate import *
-        predictor = SubmitPrediction(pathToImages='../../SegmentationDataSets/SegTHOR/',filePattern='Patient')
+        predictor = SubmitPrediction(
+                            pathToImages='../../SegmentationDataSets/SegTHOR/',
+                            #filePattern='GT',
+                            filePattern='Patient'
+                            )
         predictor.set_model(model)
         predictor.set_normalization(normParam={"means":imgMean,"vars":imgStd})
         predictor.predict_nii_patients(batchSize=8)      
