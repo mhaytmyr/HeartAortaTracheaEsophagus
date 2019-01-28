@@ -45,7 +45,7 @@ class Normalizer:
         #1. convert nii object to ndarray
         img = niiObject.get_data()
 
-        #2. standardiza dimension from [H,W,N] to [N,H,W] 
+        #2. standardize dimension from [H,W,N] to [N,H,W] 
         img = np.transpose(img,[2,0,1])
 
         #3. nii already converted to HU's
@@ -174,6 +174,22 @@ class Cropper:
         else:
             sys.exit("Error encountered in BoundingBoxCropper.bounding_box_util!")  
     
+    def crop_label(self,labelInput):
+        '''
+        Method to crop center of label using self.cols and self.rows locations
+        labelInput: label ndarray with (N,H,W,C) format
+        output: list of cropped labels
+        '''
+        N = labelInput.shape[0]
+        cropLabel = []
+        for idx in range(N):
+            row = self.rows[idx]
+            col = self.cols[idx]
+            #assign values to zoom
+            tmp = crop_image_roi(imgInput[idx],rowMin=row[0],rowMax=row[1],colMin=col[0],colMax=col[1])
+            cropLabel.append(tmp)
+        return cropLabel
+
         
     def uncrop_image(self,row,col,imgInput):
         '''
@@ -188,7 +204,7 @@ class Cropper:
 
     def uncrop(self,imgInput):
         '''
-        Method to padd image with zeros to return 512x512 resolution
+        Method to pad image with zeros to return 512x512 resolution
         input: list (images have non-uniform shape so you can't concatenate)
         output: ndarray
         '''
@@ -268,7 +284,7 @@ class Cropper:
 
     def zoom(self,imgInput,height=W,width=H):
         '''
-        Method to crop and zoom image
+        Method to zoom batch of images
         input: can be list or ndarray
         returns: ndarray
         '''
@@ -302,7 +318,7 @@ class ImageProcessor(Normalizer,Cropper):
         elif type(inputFile)==np.ndarray:#input must be already standardized
             imgStandard = inputFile
         else:
-            sys.exit(type(self).__name__+".pre_process_img can't standardize inpuy file")
+            sys.exit(type(self).__name__+".standardize_img can't standardize inpuy file")
         return imgStandard
 
     def standardize_label(self,inputFile):
@@ -314,7 +330,7 @@ class ImageProcessor(Normalizer,Cropper):
         elif type(inputFile)==np.ndarray:#input must be already standardized
             labelStandard = inputFile
         else:
-            sys.exit(type(self).__name__+".pre_process_img can't standardize inpuy file")
+            sys.exit(type(self).__name__+".standardize_label can't standardize inpuy file")
         return labelStandard
 
     def img_to_tensor(self,array):
@@ -342,9 +358,28 @@ class ImageProcessor(Normalizer,Cropper):
         else:
             sys.exit("preprocessing.img_to_tensor method can't convert ",shape," to 4D tensor");
 
+    def pre_process_img_label(self,imgBatch,labelBatch):
+        '''
+        Method to pre-process image and label simultanously. 
+        imgBatch: standardized ndarray (CT number clipped, transposed and rotated)
+        labelBatch: pre-processed label (enumerated label, transposed and rotated)
+        '''
+        #1. apply pre-processing to image only
+        imgCrop = self.crop(imgBatch)
+        imgZoom = self.zoom(imgCrop)
+        imgNorm = self.normalize(imgZoom)
+        #2. apply only zooming to labels
+        labelCrop = self.crop_label(labelBatch)
+        labelZoom = self.zoom(labelCrop)
+
+        return imgNorm, labelZoom
 
     def pre_process(self,inputFile):
-        #preprocessing 
+        '''
+        Method to pre-process input file
+        inputFile: .nii or dcm file
+        output: cropped and normalized ndarray, which can be directly passed to model
+        ''' 
         imgStandard = self.standardize_img(inputFile)
         imgCrop = self.crop(imgStandard)
         imgZoom = self.zoom(imgCrop)

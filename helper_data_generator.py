@@ -2,12 +2,136 @@ import numpy as np, sys
 import cv2, h5py, dask
 import dask.array as da
 import dask
+from queue import Queue
+import time
 from scipy import ndimage
 from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage.interpolation import map_coordinates
 
 from config import *
 from helper_to_processing import *
+
+
+class DataGenerator(ImageProcessor):
+    def __init__(self,normalize=None):
+        ImageProcessor.__init__(self,normalize)
+        
+    def load_file(self,inputFile):
+        '''
+        Input file format is assumed to be hd5
+        TODO: add methods to process different inputs
+        '''
+        filePntr = h5py.File(inputFile,'r')
+        return filePntr
+
+    def generate_data(self,inputFile=None,batchSize=16,augment=False,shuffle=False):
+        #get file
+        hdfFile = self.load_file(inputFile)
+        
+        #initialize pointer
+        idx,n = 0, hdfFile["features"].shape[0]
+        indices = np.arange(n)
+
+        while True:
+            start = idx
+            end = (idx+batchSize)
+        
+            if idx>=n:
+                #shuffle indices after each epoch
+                if shuffle: 
+                    np.random.shuffle(indices)
+
+                slice = np.arange(start,end)
+                subIndex = sorted(indices[slice%n])
+                idx = end%n
+
+                #get data    
+                imgBatch = hdfFile["features"][subIndex,...]
+                labelBatch = hdfFile["labels"][subIndex,...]
+            else:
+                #increment counter
+                idx+=batchSize
+
+                if shuffle:
+                    subIndex = sorted(indices[start:end])
+                    imgBatch = hdfFile["features"][subIndex,...]
+                    labelBatch = hdfFile["labels"][subIndex,...]
+                else:
+                    imgBatch = hdfFile["features"][start:end,...]
+                    labelBatch = hdfFile["labels"][start:end,...]
+
+            #convert to one-hot encoded
+            feature, organ = self.pre_process_img_label(imgBatch,labelBatch)
+
+            #augment data
+            if augment:
+                feature,organ = augment_data(feature,organ)
+
+            #create generator
+            yield (self.img_to_tensor(feature),{'organ_output':self.img_to_tensor(organ)});
+
+    def data_generator_stratified(hdfFileName,batchSize=50,augment=True,normalize=None):
+        '''
+        Method to generate data with balanced class in each batch
+        TODO: fix this
+        '''
+
+        #create place holder for image and label batch
+        img_batch = np.zeros((batchSize,H0,W0),dtype=np.float32);
+        label_batch = np.zeros((batchSize,H0,W0),dtype=np.float32);
+    
+        #get pointer to features and labels
+        hdfFile = h5py.File(hdfFileName,"r");
+        features = hdfFile["features"];        
+        labels = hdfFile["labels"];
+
+        #create dask array for efficienct access    
+        daskFeatures = dask.array.from_array(features,chunks=(4,H0,W0));
+        daskLabels = dask.array.from_array(labels,chunks=(4,H0,W0));
+
+        #create queue for keys
+        label_queue = Queue();
+            
+        #create dictionary to store queue indices
+        label_idx_map = {}
+        #(no need to shuffle data?), add each index to queue
+        with h5py.File(hdfFileName.replace(".h5","_IDX_MAP.h5"),"r") as fp:
+            for key in fp.keys():
+                label_queue.put(key)
+                label_idx_map[key] = Queue();
+                for item in fp[key]:
+                    label_idx_map[key].put(item);
+
+        #yield batches
+        while True:
+            #start = time.time()
+            for n in range(batchSize):
+                #get key from keys queue
+                key = label_queue.get();
+                #get corresponding index
+                index = label_idx_map[key].get();            
+                #append them to img_batch and label_batch
+                img_batch[n] = daskFeatures[index].compute();
+                label_batch[n] = daskLabels[index].compute();
+
+                #circulate queue
+                label_queue.put(key);
+                label_idx_map[key].put(index);
+
+            #debug queue
+            #print("{0:.3f} msec took to generate {1} batch".format((time.time()-start)*1000,batchSize))
+            #print(label_idx_map["2"].queue);
+
+            #apply pre-processing operations
+            feature, organ = self.pre_process_img_label(img_batch,label_batch)
+
+            #augment data
+            if augment:
+                feature,organ = augment_data(feature,organ);
+
+            #yield data 
+            #yield (feature[...,np.newaxis], {'organ_output':organ})
+            yield (self.img_to_tensor(feature),{'organ_output':self.img_to_tensor(organ)});
 
 # Define function to draw a grid
 def draw_grid(im, grid_size):
@@ -44,25 +168,25 @@ def augment_data(img,organ):
 
     #copy image to memory, hdf5 doesn't allow inplace
     #image are already loaded to memory using dask.array
-    imgNew = img;
-    organNew = organ;
+    imgNew = img
+    organNew = organ
 
     #get image info
-    n,row,col = img.shape;
+    n,row,col = img.shape
 
     for idx in range(n):	
         choice = np.random.choice(['flip','nothing','deform','zoom','zoom','nothing']);
 
         if choice=='flip':
-            img[idx,...] = imgNew[idx,:,::-1];
-            organ[idx,...] = organNew[idx,:,::-1];
+            img[idx,...] = imgNew[idx,:,::-1]
+            organ[idx,...] = organNew[idx,:,::-1]
         elif choice=='rotate':
-            img[idx,...] = imgNew[idx,::-1,:];
-            organ[idx,...] = organNew[idx,::-1,:];
+            img[idx,...] = imgNew[idx,::-1,:]
+            organ[idx,...] = organNew[idx,::-1,:]
         elif choice=='zoom':
-            zoomfactor = np.random.randint(11,21)/10;
-            dx = np.random.randint(-20,20);
-            dy = np.random.randint(-20,20);
+            zoomfactor = np.random.randint(11,21)/10
+            dx = np.random.randint(-20,20)
+            dy = np.random.randint(-20,20)
             M_zoom = cv2.getRotationMatrix2D((row/2+dx,col/2+dy), 0, zoomfactor)
         
             img[idx,...] = cv2.warpAffine(imgNew[idx,...], M_zoom,(col,row))
@@ -82,115 +206,7 @@ def augment_data(img,organ):
 
     return img,organ
 
-from queue import Queue
-import time
-def data_generator_stratified(hdfFileName,batchSize=50,augment=True,normalize=None):
-
-    #create place holder for image and label batch
-    img_batch = np.zeros((batchSize,H0,W0),dtype=np.float32);
-    label_batch = np.zeros((batchSize,H0,W0),dtype=np.float32);
-    
-    #get pointer to features and labels
-    hdfFile = h5py.File(hdfFileName,"r");
-    features = hdfFile["features"];        
-    labels = hdfFile["labels"];
-
-    #create dask array for efficienct access    
-    daskFeatures = dask.array.from_array(features,chunks=(4,H0,W0));
-    daskLabels = dask.array.from_array(labels,chunks=(4,H0,W0));
-
-    #create queue for keys
-    label_queue = Queue();
-        
-    #create dictionary to store queue indices
-    label_idx_map = {}
-    #(no need to shuffle data?), add each index to queue
-    with h5py.File(hdfFileName.replace(".h5","_IDX_MAP.h5"),"r") as fp:
-        for key in fp.keys():
-            label_queue.put(key)
-            label_idx_map[key] = Queue();
-            for item in fp[key]:
-                label_idx_map[key].put(item);
-
-    #yield batches
-    while True:
-        #start = time.time()
-        for n in range(batchSize):
-            #get key from keys queue
-            key = label_queue.get();
-            #get corresponding index
-            index = label_idx_map[key].get();            
-            #append them to img_batch and label_batch
-            img_batch[n] = daskFeatures[index].compute();
-            label_batch[n] = daskLabels[index].compute();
-
-            #circulate queue
-            label_queue.put(key);
-            label_idx_map[key].put(index);
-
-        #debug queue
-        #print("{0:.3f} msec took to generate {1} batch".format((time.time()-start)*1000,batchSize))
-        #print(label_idx_map["2"].queue);
-
-        #apply pre-processing operations
-        feature, organ = pre_process_img_label(img_batch,label_batch,normalize);
-
-        #augment data
-        if augment:
-            feature,organ = augment_data(feature,organ);
-
-        #yield data 
-        #yield (feature[...,np.newaxis], {'organ_output':organ})
-        yield (img_to_tensor(feature),{'organ_output':img_to_tensor(organ)});
 
 
-def data_generator(hdfFileName,batchSize=50,augment=True,shuffle=True,normalize=None):
 
-    #yield data with or w/o augmentation
-    with h5py.File(hdfFileName,"r") as hdfFile:
 
-        #initialize pointer
-        idx,n = 0, hdfFile["features"].shape[0];
-        indices = np.arange(n);
-        #shuffle indices
-        if shuffle:
-            np.random.shuffle(indices);
-
-        while True:
-            start = idx;
-            end = (idx+batchSize);
-        
-            if idx>=n:
-                #shuffle indices after each epoch
-                if shuffle: 
-                    np.random.shuffle(indices);
-
-                slice = np.arange(start,end);
-                subIndex = sorted(indices[slice%n]);
-                idx = end%n;
-
-                #get data    
-                img_batch = hdfFile["features"][subIndex,...];
-                label_batch = hdfFile["labels"][subIndex,...];
-            else:
-                #increment counter
-                idx+=batchSize;
-
-                if shuffle:
-                    subIndex = sorted(indices[start:end]);
-                    img_batch = hdfFile["features"][subIndex,...];
-                    label_batch = hdfFile["labels"][subIndex,...];
-                else:
-                    img_batch = hdfFile["features"][start:end,...];
-                    label_batch = hdfFile["labels"][start:end,...];
-
-            #convert to one-hot encoded
-            feature, organ = pre_process_img_label(img_batch,label_batch,normalize);
-
-            #augment data
-            if augment:
-                feature,organ = augment_data(feature,organ);
-
-            #create generator
-            yield (img_to_tensor(feature),{'organ_output':img_to_tensor(organ)});
-            
