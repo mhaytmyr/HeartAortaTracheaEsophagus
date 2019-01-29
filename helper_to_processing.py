@@ -32,8 +32,11 @@ class Normalizer:
         input: ndarray
         output: ndarray
         '''
+        #first remove unused dims
+        inputImg = inputImg.squeeze()
         nonZero = np.ma.masked_equal(inputImg,0)
         image = (nonZero*self.normalization["vars"]+self.normalization["means"]).data
+        
         return image
 
     def standardize_nii(self,niiObject,minHU=-1000, maxHU=3000):
@@ -131,7 +134,6 @@ class Normalizer:
 
         return labelMask.astype("float32")
 
-
 class Cropper:
     def __init__(self):
         self.rows = None
@@ -186,7 +188,7 @@ class Cropper:
             row = self.rows[idx]
             col = self.cols[idx]
             #assign values to zoom
-            tmp = crop_image_roi(imgInput[idx],rowMin=row[0],rowMax=row[1],colMin=col[0],colMax=col[1])
+            tmp = crop_image_roi(labelInput[idx],rowMin=row[0],rowMax=row[1],colMin=col[0],colMax=col[1])
             cropLabel.append(tmp)
         return cropLabel
 
@@ -365,29 +367,27 @@ class ImageProcessor(Normalizer,Cropper):
         labelBatch: pre-processed label (enumerated label, transposed and rotated)
         '''
         #1. apply pre-processing to image only
-        imgCrop = self.crop(imgBatch)
-        imgZoom = self.zoom(imgCrop)
-        imgNorm = self.normalize(imgZoom)
+        imgNorm = self.pre_process_img(imgBatch)
         #2. apply only zooming to labels
         labelCrop = self.crop_label(labelBatch)
         labelZoom = self.zoom(labelCrop)
 
         return imgNorm, labelZoom
 
-    def pre_process(self,inputFile):
+    def pre_process_img(self,inputFile):
         '''
         Method to pre-process input file
         inputFile: .nii or dcm file
         output: cropped and normalized ndarray, which can be directly passed to model
         ''' 
-        imgStandard = self.standardize_img(inputFile)
+        imgStandard = self.standardize_img(inputFile) #convert to numpy
         imgCrop = self.crop(imgStandard)
         imgZoom = self.zoom(imgCrop)
         imgNorm = self.normalize(imgZoom)
         
         return imgNorm
 
-    def inverse_pre_process(self,imgNorm):
+    def inverse_pre_process_img(self,imgNorm):
         #apply inverse preprocessing
         imgDeNorm = self.denormalize(imgNorm)
         imgUnZoom = self.unzoom(imgDeNorm)
@@ -447,7 +447,6 @@ def body_bounding_box(img):
     
     #return crop positions
     return (ymin,ymax),(xmin,xmax)
-
 
 def crop_image_roi(img,rowMin=ROW,rowMax=ROW+W,colMin=COL,colMax=COL+H):
     '''
