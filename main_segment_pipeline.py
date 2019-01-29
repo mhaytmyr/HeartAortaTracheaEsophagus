@@ -1,43 +1,33 @@
+#import everything
+import os, sys, glob
+import numpy as np
 
-def plot_generator(myGen,normalize):
+from helper_data_generator import *
+from helper_to_train import *
+from helper_to_plot import Plotter
+from helper_to_submit import SubmitPrediction
 
-    idx, organ = 0,1;
+def plot_generator(myGen,dataGenerator):
+
+    #create instance of Plotter class
+    plotter = Plotter()
+
     while True:
-        data, label = next(myGen)
-        #print(np.unique(label["organ_output"].argmax(axis=-1)))
+        #images are already processed in 
+        imgBatch, label = next(myGen)
 
-        #apply inverse normalization to image
-        if normalize is not None:
-            std = normalize["vars"];
-            means = normalize["means"];
-            #get non zero
-            nonZero = np.ma.masked_equal(data[idx].squeeze(),0);
-            image = (nonZero*std+means).data;
-        else:
-            image = data[idx,...,0];
-        
-        if organ is None:
-            if label["organ_output"].shape[-1]>1:
-                true_organ = label["organ_output"][idx,...].argmax(axis=-1);
-            else:
-                true_organ = label["organ_output"][idx,...,0];            
-        else:
-            true_organ = label["organ_output"][idx,...,organ];
-        
+        #gen output is ndarray and dict
+        labelBatch = label["organ_output"]
 
-        #apply morphological tranformation
-        true_organ = true_organ/true_organ.max();
+        #denormalize image
+        imgBatch = dataGenerator.denormalize(imgBatch)
 
-        #normalize true labels and input
-        image = (image-image.min())/image.max();
+        print(imgBatch.shape, labelBatch.shape)
 
-        imgStack = np.hstack([true_organ,image])
-        cv2.imshow("Plotting slice",imgStack);
-        #cv2.imshow("Plotting slice",image);
-        k=cv2.waitKey(0);
+        #first plot label and data
+        k = plotter.plot_slice_label(imgBatch,labelBatch)
         if k==27:
             break
-
 
 def morphological_closing(img):
     kernel = np.ones((5,5),np.uint8);
@@ -240,13 +230,7 @@ def report_validation_results(testFile,model,batchSize=1024,steps=int(1024/128)+
 import pickle
 if __name__=='__main__':
     
-    #import everything
-    import os, sys, glob
-    import numpy as np
     
-    from helper_data_generator import *
-    from helper_to_train import *
-
     arg = sys.argv[1]
     gpu = sys.argv[2]
 
@@ -262,17 +246,22 @@ if __name__=='__main__':
     #now get normalization parameters
     imgMean, imgStd = get_normalization_param(trainFile.replace(".h5","_STAT.h5"));
 
+    #create data generator
+    dataGenerator = DataGenerator(normalize={"means":imgMean,"vars":imgStd})
+
     #create train data generator using stratified
     #trainGen = data_generator_stratified(trainFile,batchSize=BATCHSIZE,augment=True,
     #        normalize={"means":imgMean,"vars":imgStd}
     #        )
     #create train data generator
-    trainGen = data_generator(trainFile,batchSize=BATCHSIZE,augment=True,
-            normalize={"means":imgMean,"vars":imgStd},shuffle=True)
+    #trainGen = data_generator(trainFile,batchSize=BATCHSIZE,augment=True,normalize={"means":imgMean,"vars":imgStd},shuffle=True)
+    trainGen = dataGenerator.generate_data(trainFile,
+                            batchSize=BATCHSIZE,augment=True,shuffle=True)
     #create test data generator
-    valGen = data_generator(testFile,batchSize=BATCHSIZE,augment=False,
-            normalize={"means":imgMean,"vars":imgStd},shuffle=False)
-    
+    #valGen = data_generator(testFile,batchSize=BATCHSIZE,augment=False,normalize={"means":imgMean,"vars":imgStd},shuffle=False)
+    valGen = dataGenerator.generate_data(testFile,
+                            batchSize=BATCHSIZE,augment=False,shuffle=False)
+     
 
     arg = sys.argv[1]
     if arg=='train':
@@ -306,8 +295,7 @@ if __name__=='__main__':
     elif arg=='submit':
         #load model
         model = load_json_model(modelName)
-
-        from helper_to_validate import *
+        #creat instance of SubmitPrediction
         predictor = SubmitPrediction(
                             pathToImages='../../SegmentationDataSets/SegTHOR/',
                             #filePattern='GT',
@@ -318,5 +306,5 @@ if __name__=='__main__':
         predictor.predict_nii_patients(batchSize=8)      
 
     elif arg=='plot':
-        plot_generator(valGen, normalize={"means":imgMean,"vars":imgStd})
+        plot_generator(valGen,dataGenerator)
         #plot_generator(trainGen,normalize={"means":imgMean,"vars":imgStd})
