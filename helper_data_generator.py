@@ -70,7 +70,7 @@ class DataGenerator(ImageProcessor):
             #create generator
             yield (self.img_to_tensor(feature),{'organ_output':self.img_to_tensor(organ)});
 
-    def data_generator_stratified(hdfFileName,batchSize=50,augment=True,normalize=None):
+    def data_generator_stratified(self,hdfFileName,batchSize=50,augment=True,normalize=None):
         '''
         Method to generate data with balanced class in each batch
         TODO: fix this
@@ -90,7 +90,7 @@ class DataGenerator(ImageProcessor):
         daskLabels = dask.array.from_array(labels,chunks=(4,H0,W0));
 
         #create queue for keys
-        label_queue = Queue();
+        label_queue = Queue()
             
         #create dictionary to store queue indices
         label_idx_map = {}
@@ -116,7 +116,7 @@ class DataGenerator(ImageProcessor):
 
                 #circulate queue
                 label_queue.put(key);
-                label_idx_map[key].put(index);
+                label_idx_map[key].put(index)
 
             #debug queue
             #print("{0:.3f} msec took to generate {1} batch".format((time.time()-start)*1000,batchSize))
