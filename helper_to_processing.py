@@ -1,4 +1,4 @@
-import os, sys, glob
+import os, sys, glob, pdb
 import numpy as np
 import nibabel as nib
 import pydicom
@@ -90,7 +90,7 @@ class Normalizer:
         #3. save original labels
         self.labels = label
 
-        #4. roate label counter-clockwise
+        #4. rotate label counter-clockwise
         labelRot = np.rot90(label,k=3,axes=(1,2)) 
 
         return labelRot
@@ -223,7 +223,7 @@ class Cropper:
         '''
         Method to zoom image, using Lancsoz interpolation over 8x8 pixel neighborhood. default: liner was not good
         input: 2d array
-        returns: ndarray
+        returns: 2d array
         '''          
         zoomImg = cv2.resize(imgInput,(width,height),interpolation=cv2.INTER_LANCZOS4)
         return zoomImg
@@ -232,7 +232,7 @@ class Cropper:
         '''
         Method to dezoom image
         input: 2d array
-        returns: ndarray
+        returns: 2d array
         '''
         deZoomImg = cv2.resize(imgInput.astype('float32'),(col[1]-col[0],row[1]-row[0]),interpolation=cv2.INTER_LANCZOS4)
         return deZoomImg
@@ -260,8 +260,9 @@ class Cropper:
             col = self.cols[idx]
             row = self.rows[idx]
             currLabel = np.zeros((row[1]-row[0],col[1]-col[0],zoomLabel.shape[-1]))
-            for label in range(zoomLabel.shape[-1]):
-                tmp = self.unzoom_image(row,col,zoomLabel[idx,...,label])
+            for label in range(NUMCLASSES):
+                #currLabel = cv2.resize(zoomLabel[idx],(col[1]-col[0],row[1]-row[0]),interpolation=cv2.INTER_NEAREST)
+                tmp = cv2.resize(zoomLabel[idx,...,label],(col[1]-col[0],row[1]-row[0]),interpolation=cv2.INTER_LANCZOS4)
                 currLabel[...,label] = tmp
             unZoomLabel.append(currLabel)
         return unZoomLabel
@@ -283,6 +284,32 @@ class Cropper:
                 currLabel[...,label] = tmp
             unCropLabel[idx] = currLabel
         return unCropLabel
+
+    def zoom_label(self,labelInput,height=W,width=H):
+        '''
+        Method to zoom batch of labels. 
+        input: can be list or ndarray
+        returns: 4D array (N,H,W,C)
+        '''
+        if type(labelInput)==np.ndarray:
+            n = labelInput.shape[0]
+        elif type(labelInput)==list:
+            n = len(labelInput)
+        else:
+            sys.exit(type(self).__name__+'.zoom_label() accepts list or nd array'+type(labelInput)+' provided');
+
+        zoomedLabel = np.zeros((n,height,width,NUMCLASSES))
+        #cropImg is list so, need to iterate 
+        for idx in range(n):
+            col = self.cols[idx]
+            row = self.rows[idx]
+            
+            #convert each image to categorical
+            labelOneHot = to_categorical(labelInput[idx],num_classes=NUMCLASSES).reshape((row[1]-row[0],col[1]-col[0],NUMCLASSES))
+            for label in range(NUMCLASSES):
+                zoomedLabel[idx,...,label] = cv2.resize(labelOneHot[...,label],(width,height),interpolation=cv2.INTER_LANCZOS4)
+
+        return zoomedLabel
 
     def zoom(self,imgInput,height=W,width=H):
         '''
@@ -318,6 +345,7 @@ class ImageProcessor(Normalizer,Cropper):
         elif type(inputFile)==pydicom.dataset.FileDataset:#input file is dcm
             imgStandard = self.standardize_dicom(inputFile)
         elif type(inputFile)==np.ndarray:#input must be already standardized
+            self.images = inputFile
             imgStandard = inputFile
         else:
             sys.exit(type(self).__name__+".standardize_img can't standardize inpuy file")
@@ -330,6 +358,7 @@ class ImageProcessor(Normalizer,Cropper):
         elif type(inputFile)==pydicom.dataset.FileDataset:#input file is dcm
             labelStandard = self.standardize_dicom_label(inputFile)
         elif type(inputFile)==np.ndarray:#input must be already standardized
+            self.labels = inputFile
             labelStandard = inputFile
         else:
             sys.exit(type(self).__name__+".standardize_label can't standardize inpuy file")
@@ -366,13 +395,33 @@ class ImageProcessor(Normalizer,Cropper):
         imgBatch: standardized ndarray (CT number clipped, transposed and rotated)
         labelBatch: pre-processed label (enumerated label, transposed and rotated)
         '''
-        #1. apply pre-processing to image only
+        #1. pre-processing image only
         imgNorm = self.pre_process_img(imgBatch)
-        #2. apply only zooming to labels
-        labelCrop = self.crop_label(labelBatch)
-        labelZoom = self.zoom(labelCrop)
+        #2. pre-process label
+        labelZoom = self.pre_process_label(labelBatch)
 
         return imgNorm, labelZoom
+
+    def pre_process_label(self,labelInput):
+        '''
+        Method to pre-process input label file. Zooming slightly distors image, it seems effect is small (<3%)
+        inputFile: .nii, dcm or ndarray
+        output: cropped ndarray, which can be directly passed to model.
+        ''' 
+        labelStandard = self.standardize_label(labelInput)
+        labelCrop = self.crop_label(labelStandard)
+        labelZoom = self.zoom_label(labelCrop)
+        #convert zoomed label to categorcial, 
+        #1. apply argmax, since zooming return type is double
+        #2. perform one-hot encoder then reshape
+        #min = labelZoom.min(axis=(1,2),keepdims=True)
+        #max = labelZoom.max(axis=(1,2),keepdims=True)
+        #max[max==0] = 1
+        #labelZoomNorm = (labelZoom-min)/(max-min)
+        labelZoomCat = to_categorical((labelZoom).argmax(axis=-1),NUMCLASSES).reshape((-1,W,H,NUMCLASSES))
+        #pdb.set_trace()
+
+        return labelZoomCat
 
     def pre_process_img(self,inputFile):
         '''

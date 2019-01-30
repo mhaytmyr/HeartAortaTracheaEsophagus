@@ -22,7 +22,7 @@ DECAYRATE = 1/(STEPPEREPOCHS*NUMEPOCHS);
 CLASSWEIGHTS = np.array([ 1., 7.67229246,  4.85203026,  7.95997453,  6.26339826]); #logarithm of above numbers
 
 #image crop indeces
-ROW, COL = 115,54;
+ROW, COL = 115,54
 H,W,C = 384,256,1
 H0,W0,C0 = 512,512,1
 
