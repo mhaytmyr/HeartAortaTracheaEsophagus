@@ -1,4 +1,4 @@
-import numpy as np, sys
+import numpy as np, sys, pdb
 import cv2, h5py, dask
 import dask.array as da
 import dask
@@ -68,7 +68,8 @@ class DataGenerator(ImageProcessor):
                 feature,organ = augment_data(feature,organ)
 
             #create generator
-            yield (self.img_to_tensor(feature),{'organ_output':self.img_to_tensor(organ)});
+            yield (self.img_to_tensor(feature),{'organ_output':self.img_to_tensor(organ)})
+
 
     def data_generator_stratified(self,hdfFileName,batchSize=50,augment=True,normalize=None):
         '''
@@ -127,7 +128,7 @@ class DataGenerator(ImageProcessor):
 
             #augment data
             if augment:
-                feature,organ = augment_data(feature,organ);
+                feature,organ = augment_data(feature,organ)
 
             #yield data 
             #yield (feature[...,np.newaxis], {'organ_output':organ})
