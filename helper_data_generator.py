@@ -164,9 +164,8 @@ def elastic_transform(image, alpha, sigma, alpha_affine, random_state=None):
 
 def augment_data(img,organ):
     """
-    Augment data using horizontla flip, elastic deformation and random zooming
+    Augment data using horizontal flip, elastic deformation and random zooming
     """
-
     #copy image to memory, hdf5 doesn't allow inplace
     #image are already loaded to memory using dask.array
     imgNew = img
@@ -176,8 +175,7 @@ def augment_data(img,organ):
     n,row,col = img.shape
 
     for idx in range(n):	
-        choice = np.random.choice(['flip','nothing','deform','zoom','zoom','nothing']);
-
+        choice = np.random.choice(['flip','nothing','deform','zoom','zoom','nothing'])
         if choice=='flip':
             img[idx,...] = imgNew[idx,:,::-1]
             organ[idx,...] = organNew[idx,:,::-1]

@@ -29,76 +29,35 @@ def test_generator(myGen,dataGenerator):
         if k==27: break
 
 
-def morphological_closing(img):
-    kernel = np.ones((5,5),np.uint8);
-
-    if len(img.shape)==2:
-        return cv2.morphologyEx(img, cv2.MORPH_CLOSE, kernel)
-    else:
-        outImg = np.zeros_like(img);
-        for idx in range(img.shape[-1]):
-            #outImg[...,idx] = cv2.GaussianBlur(img[...,idx],(7,7),5);
-            outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_CLOSE, kernel)
-            #outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_OPEN, kernel)
-            #outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_DILATION, kernel)
-        return outImg
-
-def plot_prediction(valGen,model,normalize):
+def plot_prediction(valGen,model,dataGenerator):
 
     ax = None; idx = 0; imgNum = 0;
     
-    while imgNum<VALSIZE:
-        data, label = next(valGen)
+    #create instance of Plotter class
+    plotter = Plotter()
 
-        #apply inverse normalization to image
-        if normalize is not None:
-            std = normalize["vars"];
-            means = normalize["means"];
-            #get non zero
-            nonZero = np.ma.masked_equal(data[idx].squeeze(),0);
-            image = (nonZero*std+means).data;
-        else:
-            image = data[idx,...,0];
-        
-        if label["organ_output"].shape[-1]>1:
-            true_organ = label["organ_output"][idx,...].argmax(axis=-1);
-        else:
-            true_organ = label["organ_output"][idx,...,0];            
+    while imgNum<VALSIZE:
+        imgBatch, label = next(valGen)
+        labelBatch = label["organ_output"]
+
+        #denormalize image for plotting
+        imgBatchDeNorm = dataGenerator.denormalize(imgBatch)       
 
         #apply morphological tranformation
-        true_organ = morphological_closing(true_organ.astype('uint8'))
-
-        #normalize true labels and input
-        image = (image-image.min())/(image.max()-image.min());
-        #true_organ = true_organ.astype("float32")/true_organ.max();
+        #true_organ = morphological_closing(true_organ.astype('uint8'))
 
         #predict image and normalize first
-        pred_organ = model.predict(data);
-
-        #check if prediction is multi-label
-        if pred_organ.shape[-1]>1:
-            pred_organ = pred_organ.argmax(axis=-1);
-        else:
-            pred_organ = pred_organ[...,0];
-        
+        labelPred = model.predict(imgBatch)
 
         #get selected index of predictions
-        pred_organ = pred_organ[idx,...]
-        pred_organ = morphological_closing(pred_organ.astype('uint8'))
-        print(np.unique(pred_organ))
-        
-        #normalize predicted labels
-        #pred_organ = pred_organ.astype("float32")/(pred_organ.max());
+        #pred_organ = morphological_closing(pred_organ.astype('uint8'))
 
-        #imgStack = np.hstack([true_organ, pred_organ,image]);
-        #cv2.imshow("Predicted Expected Results",imgStack);
-        #k = cv2.waitKey(0);
-        #if k==27:
-        #    break        
-        
-        ax = overlay_contours_plot(pred_organ,true_organ,image,imgNum,ax); 
+        k = plotter.plot_label_prediction(imgBatchDeNorm,labelBatch,labelPred)
+        if k==27: break
+
+        #ax = overlay_contours_plot(pred_organ,true_organ,image,imgNum,ax); 
         #overlay_contours_save(pred_organ,true_organ,image,imgNum);         
-        imgNum+=1;
+        imgNum+=1
 
 import matplotlib.pyplot as plt
 def overlay_contours_plot(pred,truth,image,imgNum,ax=None):
@@ -205,7 +164,9 @@ def aorta_dice():
 import time    
 def report_validation_results(testFile,model,batchSize=1024,steps=int(1024/128)+1):
 
-    valGen = data_generator(testFile, batchSize=batchSize, augment=False, normalize={"means":imgMean,"vars":imgStd},shuffle=False)
+    #create data generator
+    valGen = DataGenerator(normalize={"means":imgMean,"vars":imgStd})
+    #valGen = data_generator(testFile, batchSize=batchSize, augment=False, normalize={"means":imgMean,"vars":imgStd},shuffle=False)
     step = 0; 
     scores = [];
 
@@ -230,7 +191,6 @@ def report_validation_results(testFile,model,batchSize=1024,steps=int(1024/128)+
 import pickle
 if __name__=='__main__':
     
-    
     arg = sys.argv[1]
     gpu = sys.argv[2]
 
@@ -254,9 +214,8 @@ if __name__=='__main__':
     #        normalize={"means":imgMean,"vars":imgStd}
     #        )
     #create train data generator
-    #trainGen = data_generator(trainFile,batchSize=BATCHSIZE,augment=True,normalize={"means":imgMean,"vars":imgStd},shuffle=True)
     trainGen = dataGenerator.generate_data(trainFile,
-                            batchSize=BATCHSIZE,augment=False,shuffle=True)
+                            batchSize=BATCHSIZE,augment=True,shuffle=True)
     #create test data generator
     valGen = dataGenerator.generate_data(testFile,
                             batchSize=BATCHSIZE,augment=False,shuffle=False)
@@ -285,11 +244,11 @@ if __name__=='__main__':
         
     elif arg=='test':
         model = load_json_model(modelName)
-        plot_prediction(valGen,model,normalize={"means":imgMean,"vars":imgStd})
+        plot_prediction(valGen,model,dataGenerator)
 
     elif arg=='report':
         model = load_json_model(modelName)
-        report_validation_results(testFile,model)
+        report_validation_results(testFile,model,dataGenerator)
 
     elif arg=='submit':
         #load model
@@ -297,7 +256,6 @@ if __name__=='__main__':
         #creat instance of SubmitPrediction
         predictor = SubmitPrediction(
                             pathToImages='../../SegmentationDataSets/SegTHOR/',
-                            #filePattern='GT',
                             filePattern='Patient'
                             )
         predictor.set_model(model)

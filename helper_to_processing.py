@@ -444,6 +444,24 @@ class ImageProcessor(Normalizer,Cropper):
 
         return imgDeCrop
 
+    def morphological_closing(self,img):
+        '''
+        post-processing methods on label
+        TODO:fix this
+        '''
+        kernel = np.ones((5,5),np.uint8);
+
+        if len(img.shape)==2:
+            return cv2.morphologyEx(img, cv2.MORPH_CLOSE, kernel)
+        else:
+            outImg = np.zeros_like(img);
+            for idx in range(img.shape[-1]):
+                #outImg[...,idx] = cv2.GaussianBlur(img[...,idx],(7,7),5);
+                outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_CLOSE, kernel)
+                #outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_OPEN, kernel)
+                #outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_DILATION, kernel)
+            return outImg
+
 def body_bounding_box(img):
     '''
     Method to automatically create bounding-box around the body of the ct slice. Here is cropping is done
