@@ -7,7 +7,8 @@ from helper_to_train import *
 from helper_to_plot import Plotter
 from helper_to_submit import SubmitPrediction
 
-def plot_generator(myGen,dataGenerator):
+
+def test_generator(myGen,dataGenerator):
 
     #create instance of Plotter class
     plotter = Plotter()
@@ -16,18 +17,17 @@ def plot_generator(myGen,dataGenerator):
         #images are already processed in 
         imgBatch, label = next(myGen)
 
-        #gen output is ndarray and dict
-        labelBatch = label["organ_output"]
-
-        #denormalize image
+        #denormalize image for plotting
         imgBatch = dataGenerator.denormalize(imgBatch)
 
+        #gen output is dictionary
+        labelBatch = label["organ_output"]
+                
         print(imgBatch.shape, labelBatch.shape)
-
-        #first plot label and data
+        #plot label and data
         k = plotter.plot_slice_label(imgBatch,labelBatch)
-        if k==27:
-            break
+        if k==27: break
+
 
 def morphological_closing(img):
     kernel = np.ones((5,5),np.uint8);
@@ -244,7 +244,7 @@ if __name__=='__main__':
     testFile = "TEST.h5";
 
     #now get normalization parameters
-    imgMean, imgStd = get_normalization_param(trainFile.replace(".h5","_STAT.h5"));
+    imgMean, imgStd = get_normalization_param(trainFile.replace(".h5","_STAT.h5"))
 
     #create data generator
     dataGenerator = DataGenerator(normalize={"means":imgMean,"vars":imgStd})
@@ -256,9 +256,8 @@ if __name__=='__main__':
     #create train data generator
     #trainGen = data_generator(trainFile,batchSize=BATCHSIZE,augment=True,normalize={"means":imgMean,"vars":imgStd},shuffle=True)
     trainGen = dataGenerator.generate_data(trainFile,
-                            batchSize=BATCHSIZE,augment=True,shuffle=True)
+                            batchSize=BATCHSIZE,augment=False,shuffle=True)
     #create test data generator
-    #valGen = data_generator(testFile,batchSize=BATCHSIZE,augment=False,normalize={"means":imgMean,"vars":imgStd},shuffle=False)
     valGen = dataGenerator.generate_data(testFile,
                             batchSize=BATCHSIZE,augment=False,shuffle=False)
      
@@ -306,5 +305,5 @@ if __name__=='__main__':
         predictor.predict_nii_patients(batchSize=8)      
 
     elif arg=='plot':
-        plot_generator(valGen,dataGenerator)
-        #plot_generator(trainGen,normalize={"means":imgMean,"vars":imgStd})
+        test_generator(valGen,dataGenerator)
+        #test_generator(trainGen,dataGenerator)
