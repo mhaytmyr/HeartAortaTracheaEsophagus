@@ -162,21 +162,20 @@ def aorta_dice():
     return metric_decorator(4,0.5,0.5)
 
 import time    
-def report_validation_results(testFile,model,batchSize=1024,steps=int(1024/128)+1):
+def report_validation_results(testFile,model,dataGenerator,batchSize=1024,steps=int(1024/128)+1):
 
     #create data generator
-    valGen = DataGenerator(normalize={"means":imgMean,"vars":imgStd})
-    #valGen = data_generator(testFile, batchSize=batchSize, augment=False, normalize={"means":imgMean,"vars":imgStd},shuffle=False)
+    valGen = dataGenerator.generate_data(testFile, batchSize=batchSize, augment=False,shuffle=False)
     step = 0; 
     scores = [];
 
     while step<1:
-        X_batch, Y_batch = next(valGen);
-        Y_true = Y_batch['organ_output'];
-        step+=1;
-        start = time.time();
-        Y_pred = model.predict(X_batch);
-        end = time.time();
+        X_batch, Y_batch = next(valGen)
+        Y_true = Y_batch['organ_output']
+        step+=1
+        start = time.time()
+        Y_pred = model.predict(X_batch)
+        end = time.time()
         print(X_batch.shape, Y_true.shape, step);
 
         #calculated weighted scores
