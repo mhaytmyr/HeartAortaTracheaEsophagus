@@ -20,6 +20,10 @@ def test_generator(myGen,dataGenerator):
         #denormalize image for plotting
         imgBatch = dataGenerator.denormalize(imgBatch)
 
+        #print augmentation
+        if len(dataGenerator.augments)>0:
+            print(dataGenerator.augments)
+
         #gen output is dictionary
         labelBatch = label["organ_output"]
                 
@@ -50,7 +54,7 @@ def plot_prediction(valGen,model,dataGenerator):
         labelPred = model.predict(imgBatch)
 
         #get selected index of predictions
-        #pred_organ = morphological_closing(pred_organ.astype('uint8'))
+        labelPred = dataGenerator.morphological_closing(labelPred.argmax(axis=-1).astype('uint8'))
 
         k = plotter.plot_label_prediction(imgBatchDeNorm,labelBatch,labelPred)
         if k==27: break
@@ -217,7 +221,7 @@ if __name__=='__main__':
                             batchSize=BATCHSIZE,augment=True,shuffle=True)
     #create test data generator
     valGen = dataGenerator.generate_data(testFile,
-                            batchSize=BATCHSIZE,augment=False,shuffle=False)
+                           batchSize=BATCHSIZE,augment=False,shuffle=False)
      
 
     arg = sys.argv[1]
