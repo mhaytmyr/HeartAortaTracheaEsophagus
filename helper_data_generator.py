@@ -24,6 +24,58 @@ class DataGenerator(ImageProcessor):
         filePntr = h5py.File(inputFile,'r')
         return filePntr
 
+    def augment_img_label(self,imgInput,labelInput):
+        '''
+        Method to augment data and labels using horizontal/veritcal flipping and elastic deformation 
+        imgInput: CT image after pre-processing and normalization shape=(N,H,W)
+        labelInput: segmentation mask, shape=(N,H,W,C)
+        '''
+        #copy image to memory, hdf5 doesn't allow inplace
+        #image are already loaded to memory using dask.array
+        imgNew = imgInput.copy()
+        labelNew = labelInput.copy()
+
+        #get image info
+        n,row,col = imgInput.shape
+        #keep track of augmentation
+        augments = []
+
+        for idx in range(n):	
+            choice = np.random.choice(['flip','rotate','zoom','zoom','nothing'])
+            augments.append(choice)
+            if choice=='flip':
+                imgNew[idx,...] = imgInput[idx,:,::-1]
+                labelNew[idx,...] = labelInput[idx,:,::-1,:]
+            elif choice=='rotate':
+                imgNew[idx,...] = imgInput[idx,::-1,:]
+                labelNew[idx,...] = labelInput[idx,::-1,:,:]
+            elif choice=='zoom':
+                zoomfactor = np.random.randint(11,25)/10
+                dx = np.random.randint(-20,20)
+                dy = np.random.randint(-20,20)
+                M_zoom = cv2.getRotationMatrix2D((row/2+dx,col/2+dy), 0, zoomfactor)
+            
+                imgNew[idx,...] = cv2.warpAffine(imgInput[idx,...], M_zoom,(col,row))
+                if len(labelInput.shape)==4:
+                    for label in range(labelInput.shape[-1]):
+                        labelNew[idx,...,label] = cv2.warpAffine(labelInput[idx,...,label], M_zoom,(col,row))
+
+            elif choice=='deform':
+                #draw_grid(imgNew[idx,...], 50)
+                #draw_grid(organNew[idx,...], 50)
+                #combine two images
+                merged = np.dstack([imgInput[idx,...], labelInput[idx,...]])
+                #apply transformation
+                mergedTrans = elastic_transform(merged, merged.shape[1] * 3, merged.shape[1] * 0.08, merged.shape[1] * 0.08)
+                #now put images back
+                imgNew[idx,...] = mergedTrans[...,0]
+                labelNew[idx,...] = mergedTrans[...,1:]
+
+        #update augmentation attribute, to restore original data
+        self.augments = augments
+
+        return imgNew, labelNew
+
     def generate_data(self,inputFile=None,batchSize=16,augment=False,shuffle=False):
         #get file
         hdfFile = self.load_file(inputFile)
@@ -31,6 +83,9 @@ class DataGenerator(ImageProcessor):
         #initialize pointer
         idx,n = 0, hdfFile["features"].shape[0]
         indices = np.arange(n)
+
+        if shuffle:
+            np.random.shuffle(indices)
 
         while True:
             start = idx
@@ -65,7 +120,7 @@ class DataGenerator(ImageProcessor):
 
             #augment data
             if augment:
-                feature,organ = augment_data(feature,organ)
+                feature,organ = self.augment_img_label(feature,organ)
 
             #create generator
             yield (self.img_to_tensor(feature),{'organ_output':self.img_to_tensor(organ)})
@@ -99,24 +154,24 @@ class DataGenerator(ImageProcessor):
         with h5py.File(hdfFileName.replace(".h5","_IDX_MAP.h5"),"r") as fp:
             for key in fp.keys():
                 label_queue.put(key)
-                label_idx_map[key] = Queue();
+                label_idx_map[key] = Queue()
                 for item in fp[key]:
-                    label_idx_map[key].put(item);
+                    label_idx_map[key].put(item)
 
         #yield batches
         while True:
             #start = time.time()
             for n in range(batchSize):
                 #get key from keys queue
-                key = label_queue.get();
+                key = label_queue.get()
                 #get corresponding index
                 index = label_idx_map[key].get();            
                 #append them to img_batch and label_batch
-                img_batch[n] = daskFeatures[index].compute();
-                label_batch[n] = daskLabels[index].compute();
+                img_batch[n] = daskFeatures[index].compute()
+                label_batch[n] = daskLabels[index].compute()
 
                 #circulate queue
-                label_queue.put(key);
+                label_queue.put(key)
                 label_idx_map[key].put(index)
 
             #debug queue
@@ -162,48 +217,7 @@ def elastic_transform(image, alpha, sigma, alpha_affine, random_state=None):
 
     return map_coordinates(image, indices, order=1, mode='reflect').reshape(shape)
 
-def augment_data(img,organ):
-    """
-    Augment data using horizontal flip, elastic deformation and random zooming
-    """
-    #copy image to memory, hdf5 doesn't allow inplace
-    #image are already loaded to memory using dask.array
-    imgNew = img
-    organNew = organ
 
-    #get image info
-    n,row,col = img.shape
-
-    for idx in range(n):	
-        choice = np.random.choice(['flip','nothing','deform','zoom','zoom','nothing'])
-        if choice=='flip':
-            img[idx,...] = imgNew[idx,:,::-1]
-            organ[idx,...] = organNew[idx,:,::-1]
-        elif choice=='rotate':
-            img[idx,...] = imgNew[idx,::-1,:]
-            organ[idx,...] = organNew[idx,::-1,:]
-        elif choice=='zoom':
-            zoomfactor = np.random.randint(11,21)/10
-            dx = np.random.randint(-20,20)
-            dy = np.random.randint(-20,20)
-            M_zoom = cv2.getRotationMatrix2D((row/2+dx,col/2+dy), 0, zoomfactor)
-        
-            img[idx,...] = cv2.warpAffine(imgNew[idx,...], M_zoom,(col,row))
-            organ[idx,...] = cv2.warpAffine(organNew[idx,...], M_zoom,(col,row))
-
-        elif choice=='deform':
-            #draw_grid(imgNew[idx,...], 50)
-            #draw_grid(organNew[idx,...], 50)
-            
-            #combine two images
-            merged = np.dstack([imgNew[idx,...], organNew[idx,...]]);
-            #apply transformation
-            mergedTrans = elastic_transform(merged, merged.shape[1] * 3, merged.shape[1] * 0.08, merged.shape[1] * 0.08)
-            #now put images back
-            img[idx,...] = mergedTrans[...,0];
-            organ[idx,...] = mergedTrans[...,1:];
-
-    return img,organ
 
 
 
