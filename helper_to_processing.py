@@ -404,9 +404,9 @@ class ImageProcessor(Normalizer,Cropper):
 
     def pre_process_label(self,labelInput):
         '''
-        Method to pre-process input label file. Zooming slightly distors image, it seems effect is small (<3%)
+        Method to pre-process label file. Zooming slightly distorts label mask, it seems effect is small (<3%)
         inputFile: .nii, dcm or ndarray
-        output: cropped ndarray, which can be directly passed to model.
+        output: cropped label mask, shape=(N,H,W,C)
         ''' 
         labelStandard = self.standardize_label(labelInput)
         labelCrop = self.crop_label(labelStandard)
@@ -457,8 +457,8 @@ class ImageProcessor(Normalizer,Cropper):
             outImg = np.zeros_like(img);
             for idx in range(img.shape[-1]):
                 #outImg[...,idx] = cv2.GaussianBlur(img[...,idx],(7,7),5);
-                outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_CLOSE, kernel)
-                #outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_OPEN, kernel)
+                #outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_CLOSE, kernel)
+                outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_OPEN, kernel)
                 #outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_DILATION, kernel)
             return outImg
 
