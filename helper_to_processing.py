@@ -301,11 +301,13 @@ class Cropper:
         zoomedLabel = np.zeros((n,height,width,NUMCLASSES))
         #cropImg is list so, need to iterate 
         for idx in range(n):
-            col = self.cols[idx]
-            row = self.rows[idx]
-            
+            #col = self.cols[idx]
+            #row = self.rows[idx]
+            row,col = labelInput[idx].shape
+
             #convert each image to categorical
-            labelOneHot = to_categorical(labelInput[idx],num_classes=NUMCLASSES).reshape((row[1]-row[0],col[1]-col[0],NUMCLASSES))
+            labelOneHot = to_categorical(labelInput[idx],num_classes=NUMCLASSES).reshape((row,col,NUMCLASSES))
+            #labelOneHot = to_categorical(labelInput[idx],num_classes=NUMCLASSES).reshape((row[1]-row[0],col[1]-col[0],NUMCLASSES))
             for label in range(NUMCLASSES):
                 zoomedLabel[idx,...,label] = cv2.resize(labelOneHot[...,label],(width,height),interpolation=cv2.INTER_LANCZOS4)
 

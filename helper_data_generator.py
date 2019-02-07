@@ -41,7 +41,7 @@ class DataGenerator(ImageProcessor):
         augments = []
 
         for idx in range(n):	
-            choice = np.random.choice(['flip','rotate','zoom','zoom','nothing'])
+            choice = np.random.choice(['flip','nothing','zoom','zoom','nothing'])
             augments.append(choice)
             if choice=='flip':
                 imgNew[idx,...] = imgInput[idx,:,::-1]
