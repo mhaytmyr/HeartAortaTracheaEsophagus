@@ -66,13 +66,13 @@ class SubmitPrediction:
         labelTrans = np.transpose(predInput,[1,2,0]).astype('uint8')
         #2. create destination file name and affine
         affine = nib.load(inputFile).get_affine()
-        hdr = nib.load(inputFile).get_header()
+        #hdr = nib.load(inputFile).get_header()
 
         patName = inputFile.split('/')[-1].replace('.gz','')
         dstFile = './result/'+patName
         print(labelTrans.shape, dstFile)
         #3. save image as nifti
-        niiObj = nib.Nifti1Image(labelTrans,affine=affine,header=hdr)
+        niiObj = nib.Nifti1Image(labelTrans,affine=affine)
         print(niiObj.shape)
         nib.save(niiObj,dstFile)
 
