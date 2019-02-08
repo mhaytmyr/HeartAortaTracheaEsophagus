@@ -116,7 +116,7 @@ class SubmitPrediction:
         #5. this particular dataset was rotated -90 degree, so need to fix it
         t0 = time.time()
         labelPredDeStandard = processor.de_standardize_nii(labelPredDeCrop.argmax(axis=-1))
-        labelPredMorph = processor.morphological_closing(labelPredDeStandard.astype(np.uint8))
+        labelPredMorph = processor.morphological_operation(labelPredDeStandard.astype(np.uint8))
         print("Unzooming took {0:.4f} s".format(time.time()-t0))
 
         #saving prediction

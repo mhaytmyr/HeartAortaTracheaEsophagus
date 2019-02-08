@@ -54,7 +54,7 @@ def plot_prediction(valGen,model,dataGenerator):
         labelPred = model.predict(imgBatch)
 
         #get selected index of predictions
-        labelPred = dataGenerator.morphological_closing(labelPred.argmax(axis=-1).astype('uint8'))
+        labelPred = dataGenerator.morphological_operation(labelPred.argmax(axis=-1).astype('uint8'),'open')
 
         k = plotter.plot_label_prediction(imgBatchDeNorm,labelBatch,labelPred)
         if k==27: break
@@ -221,7 +221,9 @@ if __name__=='__main__':
                             batchSize=BATCHSIZE,augment=True,shuffle=True)
     #create test data generator
     valGen = dataGenerator.generate_data(testFile,
-                           batchSize=BATCHSIZE,augment=False,shuffle=False)
+                           #batchSize=2,
+                           batchSize=BATCHSIZE,
+                           augment=False,shuffle=False)
      
 
     arg = sys.argv[1]
@@ -238,7 +240,7 @@ if __name__=='__main__':
         ax[0].legend(labels=["Train loss","Val Loss"],loc="best");
         ax[0].set_title("Cross entropy loss vs epochs")        
         ax[0].set_xlabel("# of epochs");        
-        ax[1].plot(history["dice_1"],"r*",history["dice_2"],"g^",history["dice_3"],"b>",history["dice_4"],"k<",history["dice_5"],"mo");
+        ax[1].plot(history["dice_1"],"r*",history["dice_2"],"g^",history["dice_3"],"b>",history["dice_4"],"k<");
         ax[1].legend(labels=["Bladder","Rectum","Femoral Head","CTV","Sigmoid"]);
         ax[1].set_title("Dice coefficients vs epochs")
         ax[1].set_xlabel("# of epochs");

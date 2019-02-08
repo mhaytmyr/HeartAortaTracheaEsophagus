@@ -446,7 +446,7 @@ class ImageProcessor(Normalizer,Cropper):
 
         return imgDeCrop
 
-    def morphological_closing(self,img):
+    def morphological_operation(self,img,operation='close'):
         '''
         post-processing methods on label
         TODO:fix this
@@ -458,10 +458,14 @@ class ImageProcessor(Normalizer,Cropper):
         else:
             outImg = np.zeros_like(img);
             for idx in range(img.shape[-1]):
-                #outImg[...,idx] = cv2.GaussianBlur(img[...,idx],(7,7),5);
-                #outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_CLOSE, kernel)
-                outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_OPEN, kernel)
-                #outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_DILATION, kernel)
+                if operation=='close':
+                    outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_CLOSE, kernel)
+                elif operation=='open':
+                    outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_OPEN, kernel)
+                elif operation=='dilate':
+                    outImg[...,idx] = cv2.morphologyEx(img[...,idx], cv2.MORPH_DILATE, kernel)
+                else:
+                    sys.exit('morphological operation invalid ')
             return outImg
 
 def body_bounding_box(img):
