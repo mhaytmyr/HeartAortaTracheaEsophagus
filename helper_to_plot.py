@@ -89,7 +89,7 @@ class Plotter:
         pred = self.tensor_to_label_wrapper(predInput,idx=idx)
 
         imgStack = np.hstack([img,label,pred])
-        cv2.imshow("Slice ",imgStack)
+        cv2.imshow("Left: Slice, Middle: Ground True, Right: Prediction ",imgStack)
         k = cv2.waitKey(0)
         return k
 
