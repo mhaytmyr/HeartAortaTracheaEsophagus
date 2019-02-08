@@ -73,13 +73,43 @@ def weighted_cross_entropy(y_true,y_pred):
        
     return -tf.reduce_sum(weighted_losses,len(y_pred.get_shape()) - 1)
 
+def cross_entropy_multiclass(y_true,y_pred):
+    '''
+    Modify original cross entropy by penalizing false-positive class
+    '''
+
+    #calculate cross entropy
+    y_pred /= tf.reduce_sum(y_pred,axis=len(y_pred.get_shape())-1,keep_dims=True)
+    _epsilon = tf.convert_to_tensor(K.backend.epsilon(), dtype=y_pred.dtype.base_dtype)
+    #clip bad values
+    y_pred = tf.clip_by_value(y_pred, _epsilon, 1. - _epsilon)
+    
+    # calculate weighted loss per class and batch
+    weighted_losses = y_true * tf.log(y_pred) + (1 - y_true) * tf.log(1 - y_pred)
+
+    return -tf.reduce_sum(weighted_losses,len(y_pred.get_shape()) - 1)
+
 def weighted_batch_cross_entropy(y_true,y_pred):
     '''
     Calculates frequency of per batch, then weights cross-entropy accrodingly
+    TODO: finish this function
     '''
     
-    # get pre-computed class weights
-    weights = K.backend.variable(CLASSWEIGHTS);
+    # calculate frequency for each class
+    freq = tf.reduce_sum(y_true,axis=(0,1,2)); #leave classes
+
+    #calculate max freq
+    max_freq = tf.reduce_max(freq)
+
+    #normalize it by max
+    freq_norm = max_freq/(freq+1); #avoid by zero division
+
+    # find classes that don't contribute
+    w_mask = tf.equal(w,1.0)
+    w = tf.where(w_mask,y=w,x=tf.zeros_like(w))
+
+    # normalize weights to one
+    #weights = w / tf.reduce_sum(w,axis=(-1),keep_dims=True);
 
     #calculate cross entropy
     y_pred /= tf.reduce_sum(y_pred,axis=len(y_pred.get_shape())-1,keep_dims=True)
@@ -155,7 +185,8 @@ def train_model(trainGen,valGen,stepsPerEpoch,numEpochs,valSteps):
 
     losses = {
     #"organ_output": "categorical_crossentropy"
-    "organ_output": weighted_cross_entropy
+    #"organ_output": weighted_cross_entropy
+    "organ_output": cross_entropy_multiclass
     }
     lossWeights = {
     "organ_output": 1.0
