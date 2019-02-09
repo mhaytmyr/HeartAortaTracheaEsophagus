@@ -77,6 +77,8 @@ def cross_entropy_multiclass(y_true,y_pred):
     '''
     Modify original cross entropy by penalizing false-positive class
     '''
+    # get pre-computed class weights
+    weights = K.backend.variable(CLASSWEIGHTS)
 
     #calculate cross entropy
     y_pred /= tf.reduce_sum(y_pred,axis=len(y_pred.get_shape())-1,keep_dims=True)
@@ -85,7 +87,7 @@ def cross_entropy_multiclass(y_true,y_pred):
     y_pred = tf.clip_by_value(y_pred, _epsilon, 1. - _epsilon)
     
     # calculate weighted loss per class and batch
-    weighted_losses = y_true * tf.log(y_pred) + (1 - y_true) * tf.log(1 - y_pred)
+    weighted_losses = (y_true * tf.log(y_pred) + (1 - y_true) * tf.log(1 - y_pred))*weights
 
     return -tf.reduce_sum(weighted_losses,len(y_pred.get_shape()) - 1)
 

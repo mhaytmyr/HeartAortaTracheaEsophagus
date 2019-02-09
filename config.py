@@ -36,7 +36,10 @@ H0,W0,C0 = 512,512,1
 #modelName = "1x256x384_Augmented_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
 
 #same model as before but multiclass loss function
-modelName = "1x256x384_MultiClass_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
+#modelName = "1x256x384_MultiClass_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
+
+#same model as before but multiclass loss function
+modelName = "1x256x384_MultiClassWeighetd_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
 
 ########################
 
