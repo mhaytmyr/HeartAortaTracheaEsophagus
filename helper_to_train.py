@@ -93,7 +93,7 @@ def cross_entropy_multiclass(y_true,y_pred):
 
 def weighted_batch_cross_entropy(y_true,y_pred):
     '''
-    Calculates frequency of per batch, then weights cross-entropy accrodingly
+    Calculates frequency of per batch, then weights cross-entropy accordingly
     TODO: finish this function
     '''
     
@@ -104,23 +104,24 @@ def weighted_batch_cross_entropy(y_true,y_pred):
     max_freq = tf.reduce_max(freq)
 
     #normalize it by max
-    freq_norm = max_freq/(freq+1); #avoid by zero division
+    freq_norm = max_freq/(freq+1); #avoid zero division
 
     # find classes that don't contribute
-    w_mask = tf.equal(w,1.0)
-    w = tf.where(w_mask,y=w,x=tf.zeros_like(w))
+    w_mask = tf.equal(tf.cast(freq_norm,tf.int64),tf.cast(max_freq,tf.int64))
+    weights = tf.where(w_mask,y=freq_norm,x=tf.ones_like(freq_norm))
 
-    # normalize weights to one
-    #weights = w / tf.reduce_sum(w,axis=(-1),keep_dims=True);
+    #take a square of weights to smooth
+    weights = tf.pow(weights,0.3) #was working fine 0.2
+    #print_weights = tf.Print(weights,[weights]) #print statement
 
     #calculate cross entropy
     y_pred /= tf.reduce_sum(y_pred,axis=len(y_pred.get_shape())-1,keep_dims=True)
     _epsilon = tf.convert_to_tensor(K.backend.epsilon(), dtype=y_pred.dtype.base_dtype)
     #clip bad values
-    y_pred = tf.clip_by_value(y_pred, _epsilon, 1. - _epsilon);
+    y_pred = tf.clip_by_value(y_pred, _epsilon, 1. - _epsilon)
     
     # calculate weighted loss per class and batch
-    weighted_losses = y_true * tf.log(y_pred) * weights
+    weighted_losses = (y_true * tf.log(y_pred) + (1 - y_true) * tf.log(1 - y_pred))*weights
        
     return -tf.reduce_sum(weighted_losses,len(y_pred.get_shape()) - 1)
 
@@ -189,6 +190,7 @@ def train_model(trainGen,valGen,stepsPerEpoch,numEpochs,valSteps):
     #"organ_output": "categorical_crossentropy"
     #"organ_output": weighted_cross_entropy
     "organ_output": cross_entropy_multiclass
+    # "organ_output": weighted_batch_cross_entropy
     }
     lossWeights = {
     "organ_output": 1.0
@@ -196,14 +198,6 @@ def train_model(trainGen,valGen,stepsPerEpoch,numEpochs,valSteps):
 
     print(model.summary())
 
-    
-
-    #optimizer = K.optimizers.RMSprop(
-    #        lr=0.0001, #global learning rate,
-    #        rho=0.95, #exponential moving average; r = rho*initial_accumilation+(1-rho)*current_gradient
-    #        epsilon=1e-6, #small constant to stabilize division by zero
-    #        decay=DECAYRATE
-    #        )
     optimizer = K.optimizers.Adam(
             lr = LEARNRATE, decay = DECAYRATE        
             )
