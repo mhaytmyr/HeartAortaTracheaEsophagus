@@ -146,15 +146,15 @@ def metric_decorator(label,alpha,beta):
 
     def wrapper(y_true,y_pred):
         #convert one-hot to labels 
-        y_true = y_true.argmax(axis=-1);
-        y_pred = y_pred.argmax(axis=-1);
+        y_true = y_true.argmax(axis=-1)
+        y_pred = y_pred.argmax(axis=-1)
 
         #find matching labels
-        true = (y_true==label).astype('float32');
-        pred = (y_pred==label).astype('float32');
+        true = (y_true==label).astype('float32')
+        pred = (y_pred==label).astype('float32')
 
         return tversky_score_numpy(true,pred,alpha,beta)
-    return wrapper;
+    return wrapper
 
 def esophagus_dice():
     return metric_decorator(1,0.5,0.5)
@@ -221,8 +221,8 @@ if __name__=='__main__':
                             batchSize=BATCHSIZE,augment=True,shuffle=True)
     #create test data generator
     valGen = dataGenerator.generate_data(testFile,
-                           #batchSize=2,
-                           batchSize=BATCHSIZE,
+                           batchSize=2,
+                        #    batchSize=BATCHSIZE,
                            augment=False,shuffle=False)
      
 

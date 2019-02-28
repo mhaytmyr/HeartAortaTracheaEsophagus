@@ -271,11 +271,11 @@ def save_label_idx_map(trainFileName):
     
     
 if __name__=="__main__":
-    #trainDataPath = "../../SegmentationDataSets/SegTHOR/test/";
-    #fileName = "TEST.h5";
+    #trainDataPath = "../../SegmentationDataSets/SegTHOR/test/"
+    #fileName = "TEST.h5"
     
-    trainDataPath = "../../SegmentationDataSets/SegTHOR/train/";
-    fileName = "TRAIN.h5";
+    trainDataPath = "../../SegmentationDataSets/SegTHOR/train/"
+    fileName = "TRAIN.h5"
 
     compile_dataset(trainDataPath,fileName)
     #test_random_images(fileName)

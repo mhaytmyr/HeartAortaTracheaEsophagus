@@ -14,7 +14,9 @@ NUMEPOCHS = 100;
 NUMCLASSES = 5;
 L2PENALTY = 0.0001;
 LEARNRATE = 0.0001#0.0001
-TRAINSIZE, VALSIZE = 6396, 1024;
+TRAINSIZE = 8590 #merged dataset
+#TRAINSIZE = 6396 #original dataset
+VALSIZE =  1024
 STEPPEREPOCHS = int(TRAINSIZE/BATCHSIZE); 
 VALSTEPS = int(VALSIZE/BATCHSIZE); 
 DECAYRATE = 1/(STEPPEREPOCHS*NUMEPOCHS);
@@ -26,20 +28,21 @@ ROW, COL = 115,54
 H,W,C = 384,256,1
 H0,W0,C0 = 512,512,1
 
-#using default model with loss categorical-loss function, no data stratifying
-#modelName = "1x256x384_Base_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
-
-#training with weighted loss function
-#modelName = "1x256x384_WeightedLoss_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
-
-#training by augmenting data
-#modelName = "1x256x384_Augmented_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
 
 #same model as before but multiclass loss function
 #modelName = "1x256x384_MultiClass_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
 
 #same model as before but multiclass loss function
-modelName = "1x256x384_MultiClassWeighetd_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
+#modelName = "1x256x384_MultiClassWeighetd_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
+
+#same model as before but multiclass loss function with batch weighting
+#modelName = "1x256x384_MultiClassBatchWeight_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
+
+#multiclass loss function with batch weighting but merged dataset
+# modelName = "1x256x384_MergedData_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
+
+#using global weight, also increase leaky relu to 0.3 from 0.03
+modelName = "1x256x384_MergedDataWeighted_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
 
 ########################
 
