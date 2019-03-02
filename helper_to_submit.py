@@ -51,8 +51,15 @@ class SubmitPrediction:
             slices = nib.load(item);   
             #predict image patch
             #k = self.save_truth_label(slices,processor,plotter,item)
+            
+            #this will automatically save all predict and save
             k = self.predict_image_slices(slices,batchSize,processor,plotter,item)
+            
+            #test transformations
             #k = self.processor_tester(slices,batchSize,processor,plotter)
+
+            #analyze predictions visually
+            #k = self.analyze_prediction(slices,batchSize,processor,plotter)
             if (k==27):
                 break
 
@@ -69,7 +76,8 @@ class SubmitPrediction:
         #hdr = nib.load(inputFile).get_header()
 
         patName = inputFile.split('/')[-1].replace('.gz','')
-        dstFile = './result/'+patName
+        #dstFile = './result/'+patName #train path
+        dstFile = './result_val/'+patName #val path
         print(labelTrans.shape, dstFile)
         #3. save image as nifti
         niiObj = nib.Nifti1Image(labelTrans,affine=affine)
@@ -122,7 +130,42 @@ class SubmitPrediction:
         #saving prediction
         self.save_prediction_as_nii(labelPredMorph,patient)
         return 0
+        
+    def analyze_prediction(self,slices,batchSize=6,processor=None,plotter=None):
+        t0 = time.time()
+        #1. pre-process image by cropping, zooming and normalization
+        imgNorm = processor.pre_process_img(slices)
+        print("Pre-processing of {0} took {1:.4f} s".format(slices.shape,time.time()-t0))
+        #2. predict on current batch
+        t0 = time.time()
+        labelPred = self.model.predict(processor.img_to_tensor(imgNorm))
+        print("Inference of {0} took {1:.4f} s".format(imgNorm.shape,time.time()-t0))
+        #3. prediction has (256,384) -> convert back to original crop size
+        t0 = time.time()
+        labelPredUnZoom = processor.unzoom_label(labelPred)
+        print("Unzooming took {0:.4f} s".format(time.time()-t0))
+        #4. pad uncropped label to have (512,512) size
+        t0 = time.time()
+        labelPredDeCrop = processor.uncrop_label(labelPredUnZoom)
+        print("Padding took {0:.4f} s".format(time.time()-t0))
 
+        n = imgNorm.shape[0]
+
+        for idx in range(0,n,batchSize):
+            #get original batch of images
+            imgBatch = imgNorm[idx:idx+batchSize]
+            #apply inverse preprocessing
+            imgDeNorm = processor.denormalize(imgBatch)
+            imgUnZoom = processor.unzoom(imgDeNorm)
+            imgDeCrop = processor.uncrop(imgUnZoom)
+
+            #get label batch
+            labelBatch = labelPredDeCrop[idx:idx+batchSize]
+
+            k = plotter.plot_slice_label(imgDeCrop,labelBatch)
+            if (k==27) or (k=='n'):
+                return k
+        return k
 
     def processor_tester(self,slices,batchSize=6,processor=None,plotter=None):
         #apply preprocessing
@@ -137,6 +180,9 @@ class SubmitPrediction:
         imgUnZoom = processor.unzoom(imgDeNorm)
         imgDeCrop = processor.uncrop(imgUnZoom)
         
+        #label prediction
+        labelPred = self.model.predict(processor.img_to_tensor(imgNorm))
+
         n = imgNorm.shape[0]
 
         for idx in range(0,n,batchSize):

@@ -260,12 +260,13 @@ if __name__=='__main__':
         model = load_json_model(modelName)
         #creat instance of SubmitPrediction
         predictor = SubmitPrediction(
-                            pathToImages='../../SegmentationDataSets/SegTHOR/',
+                            #pathToImages='../../SegmentationDataSets/SegTHOR/', #all files 
+                            pathToImages='../../SegmentationDataSets/SegTHOR/validation',
                             filePattern='Patient'
                             )
         predictor.set_model(model)
         predictor.set_normalization(normParam={"means":imgMean,"vars":imgStd})
-        predictor.predict_nii_patients(batchSize=8)      
+        predictor.predict_nii_patients(batchSize=4)      
 
     elif arg=='plot':
         test_generator(valGen,dataGenerator)
