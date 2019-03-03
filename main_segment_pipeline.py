@@ -18,18 +18,17 @@ def test_generator(myGen,dataGenerator):
         imgBatch, label = next(myGen)
 
         #denormalize image for plotting
-        imgBatch = dataGenerator.denormalize(imgBatch)
-
-        #print augmentation
-        if len(dataGenerator.augments)>0:
-            print(dataGenerator.augments)
+        imgDeNorm = dataGenerator.denormalize(imgBatch)
+        imgDeZoom = dataGenerator.unzoom(imgDeNorm)
+        imgDeCrop = dataGenerator.uncrop(imgDeZoom)
 
         #gen output is dictionary
         labelBatch = label["organ_output"]
                 
         print(imgBatch.shape, labelBatch.shape)
         #plot label and data
-        k = plotter.plot_slice_label(imgBatch,labelBatch)
+        #k = plotter.plot_slice_label(imgBatch,labelBatch)
+        k = plotter.plot_slices([dataGenerator.images[0], imgDeCrop[0]])
         if k==27: break
 
 
@@ -47,21 +46,23 @@ def plot_prediction(valGen,model,dataGenerator):
         #denormalize image for plotting
         imgBatchDeNorm = dataGenerator.denormalize(imgBatch)       
 
-        #apply morphological tranformation
-        #true_organ = morphological_closing(true_organ.astype('uint8'))
-
         #predict image and normalize first
         labelPred = model.predict(imgBatch)
+        print(labelPred.shape)
 
         #get selected index of predictions
-        labelPred = dataGenerator.morphological_operation(labelPred.argmax(axis=-1).astype('uint8'),'open')
+        labelPredMorph = dataGenerator.morphological_operation_3d(labelPred)
+        # labelPredMorph = dataGenerator.morphological_operation(labelPred,'open')
 
-        k = plotter.plot_label_prediction(imgBatchDeNorm,labelBatch,labelPred)
-        if k==27: break
-
-        #ax = overlay_contours_plot(pred_organ,true_organ,image,imgNum,ax); 
-        #overlay_contours_save(pred_organ,true_organ,image,imgNum);         
-        imgNum+=1
+        # k = plotter.plot_label_prediction(imgBatchDeNorm[0],labelBatch,labelPredMorph[0].argmax(axis=-1))
+        # if k==27: break
+        
+        for idx in range(imgBatch.shape[0]):
+            if np.max(labelBatch.argmax(-1))>0:
+                ax = overlay_contours_plot(labelPredMorph[idx].argmax(axis=-1),labelBatch[idx].argmax(-1),imgBatchDeNorm[idx],imgNum,ax); 
+        # if np.max(labelBatch.argmax(-1))>0:
+        #     overlay_contours_save(labelPred[0],labelBatch[0].argmax(-1),imgBatchDeNorm[0],imgNum);         
+        imgNum+=imgBatch.shape[0]
 
 import matplotlib.pyplot as plt
 def overlay_contours_plot(pred,truth,image,imgNum,ax=None):
@@ -71,23 +72,23 @@ def overlay_contours_plot(pred,truth,image,imgNum,ax=None):
         fig, axes = plt.subplots(ncols=2, figsize=(15,8), gridspec_kw = {'wspace':0, 'hspace':0,'left':0,'right':1.0,'top':0.95,'bottom':0.});
         ax = axes.ravel();
 
-    ax[0].set_title("True contours");
-    ax[0].imshow(image, cmap="gray");
+    ax[0].set_title("True contours")
+    ax[0].imshow(image, cmap="gray")
     
     for idx in [1,2,3,4,5,6]: 
-        ax[0].contour((truth==idx).astype('float32'), colors=colors[idx-1], normlinestyles='solid', linewidths=1);
+        ax[0].contour((truth==idx).astype('float32'), colors=colors[idx-1], normlinestyles='solid', linewidths=1)
 
-    ax[0].axis('off');
+    ax[0].axis('off')
 
-    ax[1].set_title("Predicted contours");    
-    ax[1].imshow(image, cmap="gray");
+    ax[1].set_title("Predicted contours")    
+    ax[1].imshow(image, cmap="gray")
     for idx in [1,2,3,4,5,6]:
-        ax[1].contour((pred==idx).astype('float32'), colors=colors[idx-1], linestyles='solid', linewidths=1);
-    ax[1].axis('off');    
+        ax[1].contour((pred==idx).astype('float32'), colors=colors[idx-1], linestyles='solid', linewidths=1)
+    ax[1].axis('off')    
 
     #plt.tight_layout();
-    plt.show(0);
-    plt.pause(1);
+    plt.show(0)
+    plt.pause(0.5)
     
     ax[1].clear(); ax[0].clear();        
 
@@ -179,8 +180,13 @@ def report_validation_results(testFile,model,dataGenerator,batchSize=1024,steps=
         step+=1
         start = time.time()
         Y_pred = model.predict(X_batch)
+        
+        #Test effect of morphological operations
+        # labelPredMorph = dataGenerator.morphological_operation_3d(labelPred)
+        Y_pred = dataGenerator.morphological_operation(Y_pred,'open')
+        #
         end = time.time()
-        print(X_batch.shape, Y_true.shape, step);
+        print(X_batch.shape, Y_true.shape, step)
 
         #calculated weighted scores
         scores.append(('esophagus',esophagus_dice()(Y_true,Y_pred)[1]));  
@@ -203,7 +209,7 @@ if __name__=='__main__':
 
    
     #define train file name
-    trainFile = "TRAIN.h5";
+    trainFile = "TRAIN_MERGED.h5";
     testFile = "TEST.h5";
 
     #now get normalization parameters
@@ -218,10 +224,11 @@ if __name__=='__main__':
     #        )
     #create train data generator
     trainGen = dataGenerator.generate_data(trainFile,
-                            batchSize=BATCHSIZE,augment=True,shuffle=True)
+                            batchSize=BATCHSIZE,
+                            augment=True,shuffle=True)
     #create test data generator
     valGen = dataGenerator.generate_data(testFile,
-                           batchSize=2,
+                           batchSize=8,
                         #    batchSize=BATCHSIZE,
                            augment=False,shuffle=False)
      
@@ -270,4 +277,4 @@ if __name__=='__main__':
 
     elif arg=='plot':
         test_generator(valGen,dataGenerator)
-        #test_generator(trainGen,dataGenerator)
+        # test_generator(trainGen,dataGenerator)
