@@ -275,11 +275,11 @@ if __name__=="__main__":
     #fileName = "TEST.h5"
     
     trainDataPath = "../../SegmentationDataSets/SegTHOR/train/"
-    fileName = "TRAIN.h5"
+    fileName = "TRAIN_MERGED.h5"
 
-    compile_dataset(trainDataPath,fileName)
+    # compile_dataset(trainDataPath,fileName)
     #test_random_images(fileName)
     #save_train_stats(fileName)
     #save_label_idx_map(fileName)
-    #get_class_weights(fileName)
+    get_class_weights(fileName)
 

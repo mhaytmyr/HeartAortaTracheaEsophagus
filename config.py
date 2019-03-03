@@ -8,20 +8,24 @@ FILTER3 = 64;#32
 FILTER4 = 128;#64
 FILTER5 = 256;#128
 FILTER6 = 512
-FILTER7 = 1024;
-BATCHSIZE = 8;
-NUMEPOCHS = 100;
-NUMCLASSES = 5;
-L2PENALTY = 0.0001;
+FILTER7 = 1024
+BATCHSIZE = 8
+NUMEPOCHS = 120
+NUMCLASSES = 5
+L2PENALTY = 0.0001
 LEARNRATE = 0.0001#0.0001
-TRAINSIZE = 8590 #merged dataset
+# TRAINSIZE = 8590 #merged dataset hand picked
+TRAINSIZE = 9730 #merged dataset
 #TRAINSIZE = 6396 #original dataset
 VALSIZE =  1024
 STEPPEREPOCHS = int(TRAINSIZE/BATCHSIZE); 
 VALSTEPS = int(VALSIZE/BATCHSIZE); 
 DECAYRATE = 1/(STEPPEREPOCHS*NUMEPOCHS);
 #CLASSWEIGHTS = {0: 1.0, 1: 2148, 2: 128, 3: 2864, 4: 525} #calculated globally (total_for_all_categories/total_for_category)
-CLASSWEIGHTS = np.array([ 1., 7.67229246,  4.85203026,  7.95997453,  6.26339826]); #logarithm of above numbers
+#CLASSWEIGHTS = np.array([ 1., 7.67229246,  4.85203026,  7.95997453,  6.26339826]); #logarithm of above numbers
+
+#CLASSWEIGHTS = {0: 1.0, 1: 1887, 2: 108, 3: 4353, 4: 797} #for merged dataset
+CLASSWEIGHTS = np.array([1., 7.5430751 ,  4.68806532,  8.37878226,  6.68171228])
 
 #image crop indeces
 ROW, COL = 115,54
@@ -39,10 +43,13 @@ H0,W0,C0 = 512,512,1
 #modelName = "1x256x384_MultiClassBatchWeight_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
 
 #multiclass loss function with batch weighting but merged dataset
-# modelName = "1x256x384_MergedData_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
+#modelName = "1x256x384_MergedData_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
 
 #using global weight, also increase leaky relu to 0.3 from 0.03
 modelName = "1x256x384_MergedDataWeighted_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
+
+#this same as above, global weights but second half of merged dataset doesn't contain trachea and aorta
+# modelName = "1x256x384_MergedDataWeighted2_3D16_3D32_3D64_3D128_3D256_3D512_1C1024"
 
 ########################
 
