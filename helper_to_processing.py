@@ -3,7 +3,7 @@ import numpy as np
 import nibabel as nib
 import pydicom
 
-import cv2
+import cv2, pdb
 from skimage.transform import resize
 from keras.utils.np_utils import to_categorical
 
@@ -467,6 +467,33 @@ class ImageProcessor(Normalizer,Cropper):
                 else:
                     sys.exit('morphological operation invalid ')
             return outImg
+
+    def morphological_operation_3d(self,img):
+        '''
+        apply morphological operation 3D 
+        '''
+        kernel = np.ones((5,5,5),np.float32)
+        heart = np.ones((3,3,3),np.float32)
+        # pdb.set_trace()
+
+        if len(img.shape)==2:
+            return cv2.morphologyEx(img, cv2.MORPH_CLOSE, kernel)
+        else:
+            outImg = np.zeros_like(img)
+            for idx in range(img.shape[-1]):
+                if idx==1:
+                    outImg[...,idx] = grey_opening(img[...,idx], structure=kernel)
+                elif idx==2:
+                    outImg[...,idx] = grey_erosion(img[...,idx], structure=heart)
+                elif idx==3:
+                    outImg[...,idx] = grey_opening(img[...,idx], structure=kernel)
+                elif idx==4:
+                    outImg[...,idx] = grey_closing(img[...,idx], structure=kernel)
+                else:
+                    outImg[...,idx] = grey_opening(img[...,idx], structure=kernel)
+            return outImg
+    
+from scipy.ndimage.morphology import *
 
 def body_bounding_box(img):
     '''
