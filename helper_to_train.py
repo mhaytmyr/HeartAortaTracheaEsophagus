@@ -12,13 +12,16 @@ from keras.losses import categorical_crossentropy
 
 def soft_dice_loss(y_true, y_pred, epsilon=1e-6):
 
-    # skip the batch and class axis for calculating Dice score
-    numerator = 2. * K.backend.sum(y_pred * y_true, axis=(1,2))
-    denominator = K.backend.sum(K.backend.square(y_pred) + K.backend.square(y_true), axis = (1,2));
+    # skip the class axis for calculating Dice score
+    numerator = 2. * K.backend.sum(y_pred * y_true, axis=(0,1,2))
+    denominator = K.backend.sum(K.backend.square(y_pred) + K.backend.square(y_true),axis=(0,1,2))
 
     # average over classes and batch
     return 1 - K.backend.mean(numerator / (denominator + epsilon))
 
+
+def dice_plus_cross_entropy(y_true,y_pred):
+    return soft_dice_loss(y_true,y_pred)+cross_entropy_multiclass(y_true,y_pred)
 
 def tversky_score(y_true, y_pred, alpha = 0.5, beta = 0.5):
 
@@ -31,27 +34,6 @@ def tversky_score(y_true, y_pred, alpha = 0.5, beta = 0.5):
     T = K.backend.mean(num/den)
 
     return T
-
-def weighted_cross_entropy_bad(y_true,y_pred):
-    # avoid division by zero
-    w = 1 / (K.backend.sum(y_true,axis=(1,2))+1); #leave batch and classes
-
-    # find classes that don't contribute
-    w_mask = tf.equal(w,1.0);
-    w = tf.where(w_mask,y=w,x=tf.zeros_like(w));
-
-    # normalize classes to one
-    freq = w / tf.reduce_sum(w,axis=(-1),keep_dims=True);
-
-    #calculate cross entropy
-    crossEntropy = K.backend.sum(y_true * K.backend.log(y_pred+1e-6),axis=(1,2));
-
-    # calculate weighted loss per class and batch
-    weightedEntropy = freq * crossEntropy;
-    # sum weightedEntropy over class
-    weightedEntropy = - K.backend.sum(weightedEntropy,axis=(-1));
-    #now average over batch
-    return K.backend.mean(weightedEntropy);
 
 
 def weighted_cross_entropy(y_true,y_pred):
@@ -187,9 +169,11 @@ def train_model(trainGen,valGen,stepsPerEpoch,numEpochs,valSteps):
 
 
     losses = {
+    "organ_output":dice_plus_cross_entropy
+    #"organ_output": soft_dice_loss
     #"organ_output": "categorical_crossentropy"
     #"organ_output": weighted_cross_entropy
-    "organ_output": cross_entropy_multiclass
+    #"organ_output": cross_entropy_multiclass
     # "organ_output": weighted_batch_cross_entropy
     }
     lossWeights = {

@@ -468,12 +468,12 @@ class ImageProcessor(Normalizer,Cropper):
                     sys.exit('morphological operation invalid ')
             return outImg
 
-    def morphological_operation_3d(self,img):
+    def morphological_operation_3d(self,img,operation='close'):
         '''
         apply morphological operation 3D 
         '''
-        kernel = np.ones((5,5,5),np.float32)
-        heart = np.ones((3,3,3),np.float32)
+        # kernel = np.ones((5,5),np.float32)
+        kernel = np.ones((3,3),np.float32)
         # pdb.set_trace()
 
         if len(img.shape)==2:
@@ -481,16 +481,24 @@ class ImageProcessor(Normalizer,Cropper):
         else:
             outImg = np.zeros_like(img)
             for idx in range(img.shape[-1]):
-                if idx==1:
-                    outImg[...,idx] = grey_opening(img[...,idx], structure=kernel)
-                elif idx==2:
-                    outImg[...,idx] = grey_erosion(img[...,idx], structure=heart)
-                elif idx==3:
-                    outImg[...,idx] = grey_opening(img[...,idx], structure=kernel)
-                elif idx==4:
-                    outImg[...,idx] = grey_closing(img[...,idx], structure=kernel)
-                else:
-                    outImg[...,idx] = grey_opening(img[...,idx], structure=kernel)
+                #second apply on x-axis
+                for x in range(img.shape[1]):
+                    if operation=='close':
+                        outImg[:,x,:,idx] = grey_closing(outImg[:,x,:,idx], structure=kernel)
+                    elif operation=='open':
+                        outImg[:,x,:,idx] = grey_opening(outImg[:,x,:,idx], structure=kernel)
+                    elif operation=='dilate':
+                        outImg[:,x,:,idx] = grey_dilation(img[:,x,:,idx], structure=kernel)
+                    else:
+                        sys.exit('morphological operation invalid ')
+                #first apply on y-axis
+                for y in range(img.shape[2]):
+                    if operation=='close':
+                        outImg[:,:,y,idx] = grey_closing(img[:,:,y,idx], structure=kernel)
+                    elif operation=='open':
+                        outImg[:,:,y,idx] = grey_opening(img[:,:,y,idx], structure=kernel)
+                    elif operation=='dilate':
+                        outImg[:,:,y,idx] = grey_dilation(img[:,:,y,idx], structure=kernel)
             return outImg
     
 from scipy.ndimage.morphology import *
