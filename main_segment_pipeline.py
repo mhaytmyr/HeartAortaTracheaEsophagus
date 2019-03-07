@@ -51,7 +51,8 @@ def plot_prediction(valGen,model,dataGenerator):
         print(labelPred.shape)
 
         #get selected index of predictions
-        labelPredMorph = dataGenerator.morphological_operation_3d(labelPred)
+        # labelPredMorph=labelPred
+        labelPredMorph = dataGenerator.morphological_operation_3d(labelPred,'open')
         # labelPredMorph = dataGenerator.morphological_operation(labelPred,'open')
 
         # k = plotter.plot_label_prediction(imgBatchDeNorm[0],labelBatch,labelPredMorph[0].argmax(axis=-1))
@@ -182,8 +183,8 @@ def report_validation_results(testFile,model,dataGenerator,batchSize=1024,steps=
         Y_pred = model.predict(X_batch)
         
         #Test effect of morphological operations
-        # labelPredMorph = dataGenerator.morphological_operation_3d(labelPred)
-        Y_pred = dataGenerator.morphological_operation(Y_pred,'open')
+        Y_pred = dataGenerator.morphological_operation_3d(Y_pred)
+        # Y_pred = dataGenerator.morphological_operation(Y_pred,'open')
         #
         end = time.time()
         print(X_batch.shape, Y_true.shape, step)
@@ -209,7 +210,8 @@ if __name__=='__main__':
 
    
     #define train file name
-    trainFile = "TRAIN_MERGED.h5";
+    #trainFile = "TRAIN_MERGED.h5";
+    trainFile = "TRAIN_SegTHOR.h5"
     testFile = "TEST.h5";
 
     #now get normalization parameters
@@ -228,8 +230,8 @@ if __name__=='__main__':
                             augment=True,shuffle=True)
     #create test data generator
     valGen = dataGenerator.generate_data(testFile,
-                           batchSize=8,
-                        #    batchSize=BATCHSIZE,
+                        #    batchSize=64,
+                           batchSize=BATCHSIZE,
                            augment=False,shuffle=False)
      
 
@@ -248,7 +250,7 @@ if __name__=='__main__':
         ax[0].set_title("Cross entropy loss vs epochs")        
         ax[0].set_xlabel("# of epochs");        
         ax[1].plot(history["dice_1"],"r*",history["dice_2"],"g^",history["dice_3"],"b>",history["dice_4"],"k<");
-        ax[1].legend(labels=["Bladder","Rectum","Femoral Head","CTV","Sigmoid"]);
+        ax[1].legend(labels=["Esophagus","Heart","Trachea","Aorta"]);
         ax[1].set_title("Dice coefficients vs epochs")
         ax[1].set_xlabel("# of epochs");
         fig.savefig("./log/"+modelName+".jpg")

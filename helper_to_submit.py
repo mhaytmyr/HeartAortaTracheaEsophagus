@@ -109,26 +109,36 @@ class SubmitPrediction:
         #1. pre-process image by cropping, zooming and normalization
         imgNorm = processor.pre_process_img(slices)
         print("Pre-processing of {0} took {1:.4f} s".format(slices.shape,time.time()-t0))
+        
         #2. predict on current batch
         t0 = time.time()
         labelPred = self.model.predict(processor.img_to_tensor(imgNorm))
         print("Inference of {0} took {1:.4f} s".format(imgNorm.shape,time.time()-t0))
-        #3. prediction has (256,384) -> convert back to original crop size
+
+        #3. apply morphological transformation
+        t0 = time.time()
+        labelPred = processor.morphological_operation_3d(labelPred)
+        print("Morphological op {0} took {1:.4f} s".format(imgNorm.shape,time.time()-t0))
+
+        #4. prediction has (256,384) -> convert back to original crop size
         t0 = time.time()
         labelPredUnZoom = processor.unzoom_label(labelPred)
         print("Unzooming took {0:.4f} s".format(time.time()-t0))
-        #4. pad uncropped label to have (512,512) size
+        
+        #5. pad uncropped label to have (512,512) size
         t0 = time.time()
         labelPredDeCrop = processor.uncrop_label(labelPredUnZoom)
         print("Padding took {0:.4f} s".format(time.time()-t0))
+        
         #5. this particular dataset was rotated -90 degree, so need to fix it
         t0 = time.time()
+        #old code
         labelPredDeStandard = processor.de_standardize_nii(labelPredDeCrop.argmax(axis=-1))
-        labelPredMorph = processor.morphological_operation(labelPredDeStandard.astype(np.uint8),'open')
-        print("Unzooming took {0:.4f} s".format(time.time()-t0))
+        #labelPredMorph = processor.morphological_operation(labelPredDeStandard.astype(np.uint8),'open')
+        print("Rotating took {0:.4f} s".format(time.time()-t0))
 
         #saving prediction
-        self.save_prediction_as_nii(labelPredMorph,patient)
+        self.save_prediction_as_nii(labelPredDeStandard,patient)
         return 0
         
     def analyze_prediction(self,slices,batchSize=6,processor=None,plotter=None):
