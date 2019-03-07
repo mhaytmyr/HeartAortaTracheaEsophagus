@@ -45,33 +45,73 @@ def resUp(filters, upKernel, input_, down_):
 
     return up_
 
-def UNet2048():
+def resSumDown(filters, downKernel, input_):
+    down_ = Conv2D(filters, downKernel, padding='same', kernel_initializer='he_uniform', kernel_regularizer=K.regularizers.l2(L2PENALTY))(input_)
+    down_ = LeakyReLU(alpha=0.3)(down_)
+
+    down_ = Conv2D(filters, downKernel, padding='same', kernel_initializer='he_uniform', kernel_regularizer=K.regularizers.l2(L2PENALTY))(down_)
+    down_res = LeakyReLU(alpha=0.3)(down_)
+
+    #apply elemenwise sum operation
+    down_res = elementSum(down_res, input_)
+    
+    down_pool = MaxPooling2D((2, 2), strides=(2, 2))(down_res)
+
+    return down_pool, down_res
+
+def elementSum(param_flow, bypass_flow):
+    '''
+    Method to perform elementwise sum operation on the bypass block and network flow
+    '''
+    n_param_flow = param_flow.shape[-1] #get number of filters
+    n_bypass_flow = bypass_flow.shape[-1]
+    #spatial_rank = layer_util.infer_spatial_rank(param_flow)
+    spatial_rank = 2 #the rank of [nbatch, X,Y, features]
+    
+    output_tensor = param_flow
+    if n_param_flow > n_bypass_flow:  # pad the channel dim
+        pad_1 = np.int((n_param_flow - n_bypass_flow) // 2)
+        pad_2 = np.int(n_param_flow - n_bypass_flow - pad_1)
+        padding_dims = np.vstack(([[0, 0]],
+                                    [[0, 0]] * spatial_rank,
+                                    [[pad_1, pad_2]]))
+        bypass_flow = tf.pad(tensor=bypass_flow,
+                                paddings=padding_dims.tolist(),
+                                mode='CONSTANT')
+    elif n_param_flow < n_bypass_flow:  # make a projection
+        projector = Conv2D(n_param_flow, 1, padding="SAME", kernel_initializer='he_uniform', name='proj')
+        bypass_flow = projector(bypass_flow)
+
+    # element-wise sum of both paths
+    output_tensor = param_flow + bypass_flow
+    return output_tensor
+
+def UNet1024SkipConnection():
     downKernel = 3;
     upKernel = 3;
     
     inputs = Input(shape=(W,H,1))
 
     #proceed with unet architecture
-    down0, down0_res = resDown(FILTER1//2, downKernel, inputs)
-    down1, down1_res = resDown(FILTER2//2, downKernel, down0)
-    down2, down2_res = resDown(FILTER3//2, downKernel, down1)
-    down3, down3_res = resDown(FILTER4//2, downKernel, down2)
-    down4, down4_res = resDown(FILTER5//2, downKernel, down3)
-    down5, down5_res = resDown(FILTER6//2, downKernel, down4)
-    down6, down6_res = resDown(FILTER7//2, downKernel, down5)
+    down0, down0_res = resSumDown(FILTER1, downKernel, inputs)
+    down1, down1_res = resSumDown(FILTER2, downKernel, down0)
+    down2, down2_res = resSumDown(FILTER3, downKernel, down1)
+    down3, down3_res = resSumDown(FILTER4, downKernel, down2)
+    down4, down4_res = resSumDown(FILTER5, downKernel, down3)
+    down5, down5_res = resSumDown(FILTER6, downKernel, down4)
 
     print(down5.shape)
-    center = Conv2D(1024, (1, 1), padding='same', kernel_regularizer=K.regularizers.l2(L2PENALTY))(down6)
-    center = Activation('relu')(center)
+    center = Conv2D(1024, (1, 1), padding='same',kernel_regularizer=K.regularizers.l2(L2PENALTY))(down5)
+    #center = BatchNormalization(epsilon=1e-4)(center)
+    center = LeakyReLU(alpha=0.3)(center)
     print(center.shape)
 
-    up6 = resUp(FILTER7//2, upKernel, center, down6_res)
-    up5 = resUp(FILTER6//2, upKernel, up6, down5_res)
-    up4 = resUp(FILTER5//2, upKernel, up5, down4_res)
-    up3 = resUp(FILTER4//2, upKernel, up4, down3_res)
-    up2 = resUp(FILTER3//2, upKernel, up3, down2_res)
-    up1 = resUp(FILTER2//2, upKernel, up2, down1_res)
-    up0 = resUp(FILTER1//2, upKernel, up1, down0_res)
+    up5 = resUp(FILTER6, upKernel, center, down5_res)
+    up4 = resUp(FILTER5, upKernel, up5, down4_res)
+    up3 = resUp(FILTER4, upKernel, up4, down3_res)
+    up2 = resUp(FILTER3, upKernel, up3, down2_res)
+    up1 = resUp(FILTER2, upKernel, up2, down1_res)
+    up0 = resUp(FILTER1, upKernel, up1, down0_res)
 
 
     if NUMCLASSES==1:
@@ -82,6 +122,8 @@ def UNet2048():
     model = Model(inputs=inputs, outputs=[organMask],name="model");
 
     return model
+
+
 
 
 def UNet1024():
