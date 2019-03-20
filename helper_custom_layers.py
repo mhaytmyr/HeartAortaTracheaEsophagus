@@ -7,54 +7,259 @@ from keras.callbacks import Callback
 #from keras.backend import tf as ktf
 from keras.utils import conv_utils
 from keras.engine import InputSpec
+import matplotlib.pyplot as plt
 
+class LRFinder(Callback):
+    
+    '''
+    A simple callback for finding the optimal learning rate range for your model + dataset. 
+    
+    # Usage
+        ```python
+            lr_finder = LRFinder(min_lr=1e-5, 
+                                 max_lr=1e-2, 
+                                 steps_per_epoch=np.ceil(epoch_size/batch_size), 
+                                 epochs=3)
+            model.fit(X_train, Y_train, callbacks=[lr_finder])
+            
+            lr_finder.plot_loss()
+        ```
+    
+    # Arguments
+        min_lr: The lower bound of the learning rate range for the experiment.
+        max_lr: The upper bound of the learning rate range for the experiment.
+        steps_per_epoch: Number of mini-batches in the dataset. Calculated as `np.ceil(epoch_size/batch_size)`. 
+        epochs: Number of epochs to run experiment. Usually between 2 and 4 epochs is sufficient. 
+        
+    # References
+        Blog post: jeremyjordan.me/nn-learning-rate
+        Original paper: https://arxiv.org/abs/1506.01186
+    '''
+    
+    def __init__(self, min_lr=1e-5, max_lr=1e-2, steps_per_epoch=None, epochs=None):
+        super().__init__()
+        
+        self.min_lr = min_lr
+        self.max_lr = max_lr
+        self.total_iterations = steps_per_epoch * epochs
+        self.iteration = 0
+        self.history = {}
+        
+    def clr(self):
+        '''Calculate the learning rate.'''
+        x = self.iteration / self.total_iterations 
+        return self.min_lr + (self.max_lr-self.min_lr) * x
+        
+    def on_train_begin(self, logs=None):
+        '''Initialize the learning rate to the minimum value at the start of training.'''
+        logs = logs or {}
+        K.backend.set_value(self.model.optimizer.lr, self.min_lr)
+        
+    def on_batch_end(self, epoch, logs=None):
+        '''Record previous batch statistics and update the learning rate.'''
+        logs = logs or {}
+        self.iteration += 1
+
+        self.history.setdefault('lr', []).append(K.backend.get_value(self.model.optimizer.lr))
+        self.history.setdefault('iterations', []).append(self.iteration)
+
+        for k, v in logs.items():
+            self.history.setdefault(k, []).append(v)
+            
+        K.backend.set_value(self.model.optimizer.lr, self.clr())
+ 
+    def plot_lr(self):
+        '''Helper function to quickly inspect the learning rate schedule.'''
+        plt.plot(self.history['iterations'], self.history['lr'])
+        plt.yscale('log')
+        plt.xlabel('Iteration')
+        plt.ylabel('Learning rate')
+        plt.show()
+        
+    def plot_loss(self):
+        '''Helper function to quickly observe the learning rate experiment results.'''
+        plt.plot(self.history['lr'], self.history['loss'])
+        plt.xscale('log')
+        plt.xlabel('Learning rate')
+        plt.ylabel('Loss')
+        plt.show()
+import pdb
+
+
+class SGDRScheduler(Callback):
+    '''Cosine annealing learning rate scheduler with periodic restarts.
+    # Usage
+        ```python
+            schedule = SGDRScheduler(min_lr=1e-5,
+                                     max_lr=1e-2,
+                                     steps_per_epoch=np.ceil(epoch_size/batch_size),
+                                     lr_decay=0.9,
+                                     cycle_length=5,
+                                     mult_factor=1.5)
+            model.fit(X_train, Y_train, epochs=100, callbacks=[schedule])
+        ```
+    # Arguments
+        min_lr: The lower bound of the learning rate range for the experiment.
+        max_lr: The upper bound of the learning rate range for the experiment.
+        steps_per_epoch: Number of mini-batches in the dataset. Calculated as `np.ceil(epoch_size/batch_size)`. 
+        lr_decay: Reduce the max_lr after the completion of each cycle.
+                  Ex. To reduce the max_lr by 20% after each cycle, set this value to 0.8.
+        cycle_length: Initial number of epochs in a cycle.
+        mult_factor: Scale epochs_to_restart after each full cycle completion.
+    # References
+        Blog post: jeremyjordan.me/nn-learning-rate
+        Original paper: http://arxiv.org/abs/1608.03983
+    '''
+    def __init__(self,
+                 min_lr,
+                 max_lr,
+                 steps_per_epoch,
+                 lr_decay=1,
+                 cycle_length=10,
+                 mult_factor=2):
+
+        self.min_lr = min_lr
+        self.max_lr = max_lr
+        self.lr_decay = lr_decay
+
+        self.batch_since_restart = 0
+        self.next_restart = cycle_length
+
+        self.steps_per_epoch = steps_per_epoch
+
+        self.cycle_length = cycle_length
+        self.mult_factor = mult_factor
+
+        self.history = {}
+
+    def clr(self):
+        '''Calculate the learning rate.'''
+        fraction_to_restart = self.batch_since_restart / (self.steps_per_epoch * self.cycle_length)
+        lr = self.min_lr + 0.5 * (self.max_lr - self.min_lr) * (1 + np.cos(fraction_to_restart * np.pi))
+        return lr
+
+    def on_train_begin(self, logs={}):
+        '''Initialize the learning rate to the minimum value at the start of training.'''
+        logs = logs or {}
+        K.backend.set_value(self.model.optimizer.lr, self.max_lr)
+
+    def on_batch_end(self, batch, logs={}):
+        '''Record previous batch statistics and update the learning rate.'''
+        logs = logs or {}
+        self.history.setdefault('lr', []).append(K.backend.get_value(self.model.optimizer.lr))
+        for k, v in logs.items():
+            self.history.setdefault(k, []).append(v)
+
+        self.batch_since_restart += 1
+        K.backend.set_value(self.model.optimizer.lr, self.clr())
+
+    def on_epoch_end(self, epoch, logs={}):
+        '''Check for end of current cycle, apply restarts when necessary.'''
+        if epoch + 1 == self.next_restart:
+            self.batch_since_restart = 0
+            self.cycle_length = np.ceil(self.cycle_length * self.mult_factor)
+            self.next_restart += self.cycle_length
+            self.max_lr *= self.lr_decay
+            self.best_weights = self.model.get_weights()
+
+    def on_train_end(self, logs={}):
+        '''Set weights to the values from the end of the most recent cycle for best performance.'''
+        self.model.set_weights(self.best_weights)
+
+
+class LRAnnealer(Callback):
+    def __init__(self, initial_lr, decay_rate, exponetial=True):
+        self.initial_lr = initial_lr
+        self.decay_rate = decay_rate
+        self.expo = exponetial
+        self.history = {}
+
+    def clr(self):
+        '''Calculate the learning rate.'''
+        iter = K.backend.get_value(self.model.optimizer.iterations)
+        if self.expo:
+            lr = self.initial_lr * np.exp(-self.decay_rate * iter)
+        else:
+            lr = self.initial_lr / (1 + self.decay_rate * iter)
+        
+        return lr
+
+    def on_train_begin(self, logs={}):
+        '''Initialize the learning rate to the minimum value at the start of training.'''
+        logs = logs or {}
+        K.backend.set_value(self.model.optimizer.lr, self.initial_lr)
+
+    # def on_batch_end(self, batch, logs={}):
+    def on_epoch_begin(self,epoch,logs={}):
+        '''Record previous batch statistics and update the learning rate.'''
+        logs = logs or {}
+        self.history.setdefault('lr', []).append(K.backend.get_value(self.model.optimizer.lr))
+        for k, v in logs.items():
+            self.history.setdefault(k, []).append(v)
+
+        K.backend.set_value(self.model.optimizer.lr, self.clr())
 
 class Metrics(Callback):
-    def __init__(self,generator, steps, batch):
-        self.generator = generator;
-        self.steps = steps;
-        self.batch = batch;
+    def __init__(self,val_gen, val_steps, val_batch):
+        super(Metrics).__init__()
+        self.val_gen = val_gen
+        self.val_steps = val_steps
+        self.val_batch = val_batch
+        self.learn_rate = []
 
     def on_train_begin(self,logs={}):
         n = self.params["metrics"].__len__();
-        self.val_score_names = self.params["metrics"][n//2:];
-        self.train_score_names = self.params["metrics"][:n//2];
-        
-        self.train_metrics = {item:0 for item in self.train_score_names if 'loss' not in item};
-        self.batch_accumilator = {item:0 for item in self.train_score_names if 'loss' not in item};
+        self.val_score_names = self.params["metrics"][n//2:]
+        self.train_score_names = self.params["metrics"][:n//2]
+
+        #train metrics
+        self.train_metrics = {item:0 for item in self.train_score_names if 'loss' not in item}
+        self.batch_accumilator = {item:0 for item in self.train_score_names if 'loss' not in item}
 
         print(self.val_score_names)
         print(self.train_score_names)
 
     def on_epoch_begin(self,epoch,logs={}):
-        #reset values to zero
+        #reset train values to zero
         for key in self.train_metrics:
-            self.train_metrics[key] = 0;
-            self.batch_accumilator[key] = 0;
-
+            self.train_metrics[key] = 0
+            self.batch_accumilator[key] = 0
+        
     def on_batch_end(self,batch,logs={}):
+        #self.learn_rate.append(K.backend.get_value(self.model.optimizer.lr))
 
-        #now perform weighets sum
+        #now perform weights sum
         for key in self.train_metrics:
             #don't update results that are zero
             if logs[key]>0:
                 #update batch accumilator
-                self.batch_accumilator[key] += logs["size"]; 
-                self.train_metrics[key] += logs["size"]*logs[key];
-            
+                self.batch_accumilator[key] += logs["size"]
+                self.train_metrics[key] += logs["size"]*logs[key]
+        #pdb.set_trace()
+
     def on_epoch_end(self,epoch,logs={}):
-
-        print("end of epochs");
-        print("original scores ....")
-        #print(logs)
-        self.train_scores = {key:logs[key] for key in self.train_score_names if 'loss' not in key};
-        print(self.train_scores)
         
-        print("manual calculation ....")        
-        self.train_scores = {key:self.train_metrics[key]/max(1,self.batch_accumilator[key]) for key in self.train_metrics};
-        print(self.train_scores)    
+        print("end of epochs")
+        #logs.setdefault('lr', []).append(K.backend.get_value(self.model.optimizer.lr))
+        logs['lr'] = K.backend.get_value(self.model.optimizer.lr)
 
-        #assign updated scores to log
+        # pdb.set_trace()
+
+        #optimizer = self.model.optimizer
+        #lr = tf.to_float(optimizer.lr, name='ToFloat')
+        # decay = tf.to_float(optimizer.decay, name='ToFloat')
+        # iter = tf.to_float(optimizer.iterations, name='ToFloat')
+        #print(K.backend.eval(lr), logs)
+        # lr = K.backend.eval(lr * (1. / (1. + decay * iter)))
+        #assign learning rate to logs
+        #logs.setdefault('lr',[]).append(K.backend.eval(lr))
+
+
+        print("train metrics ...")        
+        self.train_scores = {key:self.train_metrics[key]/max(1,self.batch_accumilator[key]) for key in self.train_metrics}
+        print(self.train_scores)    
+        
+        #assign updated train scores to log
         for key in self.train_scores:
             logs[key] = self.train_scores[key]
 
@@ -121,15 +326,15 @@ class BilinearInterpolation(Layer):
         width = K.backend.shape(image)[2]
         num_channels = K.backend.shape(image)[3]
 
-        x = K.backend.cast(K.backend.flatten(sampled_grids[:, 0:1, :]), dtype='float32')
-        y = K.backend.cast(K.backend.flatten(sampled_grids[:, 1:2, :]), dtype='float32')
+        x = np.int(K.backend.flatten(sampled_grids[:, 0:1, :]), dtype='float32')
+        y = np.int(K.backend.flatten(sampled_grids[:, 1:2, :]), dtype='float32')
 
-        x = .5 * (x + 1.0) * K.backend.cast(height, dtype='float32')
-        y = .5 * (y + 1.0) * K.backend.cast(width, dtype='float32')
+        x = .5 * (x + 1.0) * np.int(height, dtype='float32')
+        y = .5 * (y + 1.0) * np.int(width, dtype='float32')
 
-        x0 = K.backend.cast(x, 'int32')
+        x0 = np.int(x, 'int32')
         x1 = x0 + 1
-        y0 = K.backend.cast(y, 'int32')
+        y0 = np.int(y, 'int32')
         y1 = y0 + 1
 
         max_x = int(K.backend.int_shape(image)[1] - 1)
@@ -159,16 +364,16 @@ class BilinearInterpolation(Layer):
         indices_d = base_y1 + x1
 
         flat_image = K.backend.reshape(image, shape=(-1, num_channels))
-        flat_image = K.backend.cast(flat_image, dtype='float32')
+        flat_image = np.int(flat_image, dtype='float32')
         pixel_values_a = K.backend.gather(flat_image, indices_a)
         pixel_values_b = K.backend.gather(flat_image, indices_b)
         pixel_values_c = K.backend.gather(flat_image, indices_c)
         pixel_values_d = K.backend.gather(flat_image, indices_d)
 
-        x0 = K.backend.cast(x0, 'float32')
-        x1 = K.backend.cast(x1, 'float32')
-        y0 = K.backend.cast(y0, 'float32')
-        y1 = K.backend.cast(y1, 'float32')
+        x0 = np.int(x0, 'float32')
+        x1 = np.int(x1, 'float32')
+        y0 = np.int(y0, 'float32')
+        y1 = np.int(y1, 'float32')
 
         area_a = K.backend.expand_dims(((x1 - x) * (y1 - y)), 1)
         area_b = K.backend.expand_dims(((x1 - x) * (y - y0)), 1)
@@ -234,25 +439,56 @@ class BilinearInterpolation(Layer):
 
         return interpolated_image
 
-
-class MorpholocialOperations(Layer):
-    def __init__(self,output_size, morph_opt, **kwargs):
-        self.output_size = output_size;
-        self.morph_opt = morph_opt; #can be erosion, dilation, opening or closing
-        super(MorpholocialOperations,self).__init__(**kwargs)
+import numpy as np
+class ElementWiseSum(Layer):
+    def __init__(self, **kwargs):
+        #self.output_size = None
+        super(ElementWiseSum,self).__init__(**kwargs)
 
     def compute_output_shape(self, input_shape):
-        pass
-    def call(self, inputs):
-        #apply morphology here
-        pass
+        #self.output_size = K.backend.int_shape(self.result)
+        return K.backend.int_shape(self.result)
 
-    def get_config(self):
-        config = {'morph_opt': self.morph_opt,
-                'output_size': self.output_size}
-
-        base_config = super(MorpholocialOperations, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
+    def call(self, inputs, **kwargs):
+        '''
+        Method to perform elementwise sum operation on the bypass block and network flow
+        '''
+        n_param_flow = K.backend.int_shape(inputs[0])[-1] #get number of filters
+        n_bypass_flow = K.backend.int_shape(inputs[1])[-1]
+        #param_flow = inputs[0]
+        #bypass_flow = inputs[1]
+        spatial_rank = 2 #the rank of [nbatch, X, Y, features]
+        
+        output_tensor = inputs[0]
+        if n_param_flow > n_bypass_flow:  # pad the channel dim
+            pad_1 = np.int((n_param_flow - n_bypass_flow) // 2)
+            pad_2 = np.int(int(n_param_flow - n_bypass_flow - pad_1))
+            padding_dims = np.vstack(([[0, 0]],
+                                        [[0, 0]] * spatial_rank,
+                                        [[pad_1, pad_2]]))
+            bypass_flow = tf.pad(tensor=inputs[1],
+                                    paddings=padding_dims.tolist(),
+                                    mode='CONSTANT')
+        elif n_param_flow < n_bypass_flow:  # make a projection
+            bypass_flow = tf.layers.conv2d(
+                inputs[1],
+                filters = n_param_flow,
+                kernel_size = (1,1),
+                strides=(1, 1),
+                padding='same',
+                data_format='channels_last',
+                dilation_rate=(1, 1),
+                kernel_initializer='he_uniform',
+            )
+            
+        output_tensor = inputs[0] + bypass_flow
+        self.result = output_tensor
+        return output_tensor
+        
+    # def get_config(self):
+        # config = {'output_size': self.output_size}
+        # base_config = super(ElementWiseSum, self).get_config()
+        # return dict(list(base_config.items())+ list(config.items()))
 
 class BilinearUpsampling(Layer):
     def __init__(self, upsampling=(2, 2), output_size=None, data_format=None, **kwargs):
