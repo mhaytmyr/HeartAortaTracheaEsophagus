@@ -13,8 +13,9 @@ from helper_to_processing import *
 
 
 class DataGenerator(ImageProcessor):
-    def __init__(self,normalize=None):
+    def __init__(self,normalize=None,crop=True):
         ImageProcessor.__init__(self,normalize)
+        self.crop = crop
         
     def load_file(self,inputFile):
         '''
@@ -41,7 +42,7 @@ class DataGenerator(ImageProcessor):
         augments = []
 
         for idx in range(n):	
-            choice = np.random.choice(['flip','nothing','zoom','zoom','nothing'])
+            choice = np.random.choice(['flip','zoom','flip','zoom','nothing'])
             augments.append(choice)
             if choice=='flip':
                 imgNew[idx,...] = imgInput[idx,:,::-1]
@@ -76,12 +77,17 @@ class DataGenerator(ImageProcessor):
 
         return imgNew, labelNew
 
-    def generate_data(self,inputFile=None,batchSize=16,augment=False,shuffle=False):
+    def generate_data(self,inputFile=None,size=None,batchSize=16,augment=False,shuffle=False):
         #get file
         hdfFile = self.load_file(inputFile)
         
         #initialize pointer
-        idx,n = 0, hdfFile["features"].shape[0]
+        if size is None:
+            n = hdfFile["features"].shape[0]
+        else:
+            n = size
+        
+        idx = 0 
         indices = np.arange(n)
 
         if shuffle:
@@ -116,7 +122,7 @@ class DataGenerator(ImageProcessor):
                     labelBatch = hdfFile["labels"][start:end,...]
 
             #convert to one-hot encoded
-            feature, organ = self.pre_process_img_label(imgBatch,labelBatch)
+            feature, organ = self.pre_process_img_label(imgBatch,labelBatch,crop=self.crop)
 
             #augment data
             if augment:

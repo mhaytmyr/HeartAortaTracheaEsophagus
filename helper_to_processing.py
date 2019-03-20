@@ -26,6 +26,24 @@ class Normalizer:
         normalized = ((nonZero-self.normalization["means"])/self.normalization["vars"]).data
         return normalized
 
+    def normalize_new(self,inputImg):
+        '''
+        Method to normalize image using range of CT numbers
+        input: ndarray
+        output: ndarray (normalized btw [0,1])
+        '''
+        normalized = inputImg/1000. - 2
+        return normalized
+
+    def denormalize_new(self,inputImg):
+        '''
+        Method to normalize image using range of CT numbers
+        input: ndarray
+        output: ndarray (normalized btw [0,4000])
+        '''
+        denorm = (inputImg + 2) * 1000.
+        return denorm
+
     def denormalize(self,inputImg):
         '''
         Method to apply inverse normalization to image
@@ -391,51 +409,49 @@ class ImageProcessor(Normalizer,Cropper):
         else:
             sys.exit("preprocessing.img_to_tensor method can't convert ",shape," to 4D tensor");
 
-    def pre_process_img_label(self,imgBatch,labelBatch):
+    def pre_process_img_label(self,imgBatch,labelBatch,crop=True):
         '''
         Method to pre-process image and label simultanously. 
         imgBatch: standardized ndarray (CT number clipped, transposed and rotated)
         labelBatch: pre-processed label (enumerated label, transposed and rotated)
         '''
         #1. pre-processing image only
-        imgNorm = self.pre_process_img(imgBatch)
+        imgNorm = self.pre_process_img(imgBatch,crop)
         #2. pre-process label
-        labelZoom = self.pre_process_label(labelBatch)
+        labelZoom = self.pre_process_label(labelBatch,crop)
 
         return imgNorm, labelZoom
 
-    def pre_process_label(self,labelInput):
+    def pre_process_label(self,labelInput,crop=True):
         '''
         Method to pre-process label file. Zooming slightly distorts label mask, it seems effect is small (<3%)
         inputFile: .nii, dcm or ndarray
         output: cropped label mask, shape=(N,H,W,C)
         ''' 
-        labelStandard = self.standardize_label(labelInput)
-        labelCrop = self.crop_label(labelStandard)
-        labelZoom = self.zoom_label(labelCrop)
-        #convert zoomed label to categorcial, 
-        #1. apply argmax, since zooming return type is double
-        #2. perform one-hot encoder then reshape
-        #min = labelZoom.min(axis=(1,2),keepdims=True)
-        #max = labelZoom.max(axis=(1,2),keepdims=True)
-        #max[max==0] = 1
-        #labelZoomNorm = (labelZoom-min)/(max-min)
-        labelZoomCat = to_categorical((labelZoom).argmax(axis=-1),NUMCLASSES).reshape((-1,W,H,NUMCLASSES))
-        #pdb.set_trace()
-
+        if crop:
+            labelStandard = self.standardize_label(labelInput)
+            labelCrop = self.crop_label(labelStandard)
+            labelZoom = self.zoom_label(labelCrop)
+            labelZoomCat = to_categorical((labelZoom).argmax(axis=-1),NUMCLASSES).reshape((-1,W,H,NUMCLASSES))
+        else:#croping already applied to just run on full resolution
+            labelStandard = self.standardize_label(labelInput)
+            labelZoomCat = to_categorical(labelStandard,NUMCLASSES).reshape((-1,W,H,NUMCLASSES))
         return labelZoomCat
 
-    def pre_process_img(self,inputFile):
+    def pre_process_img(self,inputFile,crop=True):
         '''
         Method to pre-process input file
         inputFile: .nii or dcm file
         output: cropped and normalized ndarray, which can be directly passed to model
         ''' 
-        imgStandard = self.standardize_img(inputFile) #convert to numpy
-        imgCrop = self.crop(imgStandard)
-        imgZoom = self.zoom(imgCrop)
-        imgNorm = self.normalize(imgZoom)
-        
+        if crop:
+            imgStandard = self.standardize_img(inputFile) #convert to numpy
+            imgCrop = self.crop(imgStandard)
+            imgZoom = self.zoom(imgCrop)
+            imgNorm = self.normalize(imgZoom)
+        else: #normalization is 256x384 so input has to be cropped
+            imgStandard = self.standardize_img(inputFile)
+            imgNorm = self.normalize(imgStandard)
         return imgNorm
 
     def inverse_pre_process_img(self,imgNorm):
